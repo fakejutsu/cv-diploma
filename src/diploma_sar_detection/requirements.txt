@@ -1,0 +1,7 @@
+ultralytics
+torch
+torchvision
+pyyaml
+matplotlib
+pandas
+tqdm
