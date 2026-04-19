@@ -30,6 +30,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--workers", type=int, default=4, help="Number of dataloader workers.")
     parser.add_argument("--patience", type=int, default=20, help="Early stopping patience.")
     parser.add_argument("--seed", type=int, default=42, help="Random seed.")
+    parser.add_argument(
+        "--optimizer",
+        default=None,
+        choices=("SGD", "Adam", "AdamW", "RMSProp", "auto"),
+        help="Optional optimizer override for Ultralytics train().",
+    )
     parser.add_argument("--cache", choices=("ram", "disk"), help="Optional dataset caching mode.")
     parser.add_argument(
         "--amp",
@@ -101,6 +107,7 @@ def main() -> int:
         "workers": args.workers,
         "patience": args.patience,
         "seed": args.seed,
+        "optimizer": args.optimizer,
         "cache": args.cache,
         "amp": args.amp,
         "resume": args.resume,
@@ -134,6 +141,8 @@ def main() -> int:
         }
         if args.cache is not None:
             train_kwargs["cache"] = args.cache
+        if args.optimizer is not None:
+            train_kwargs["optimizer"] = args.optimizer
         if args.amp is not None:
             train_kwargs["amp"] = args.amp
 
