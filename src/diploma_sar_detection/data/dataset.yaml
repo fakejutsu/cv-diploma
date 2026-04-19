@@ -1,0 +1,12 @@
+path: E:/moskovskiy/Compressed Version/Compressed Version
+train: images/train
+val: images/val
+test: images/test
+
+nc: 5
+names:
+  - swimmer
+  - boat
+  - jetski
+  - life_saving_appliances
+  - buoy

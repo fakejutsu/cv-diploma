@@ -1,0 +1,18 @@
+# Starting template for a YOLO26-style detector with a timm Swin-T backbone.
+# The `TorchVision` symbol is monkey-patched by scripts/train_swin.py to point
+# to the custom SwinTBackbone wrapper in custom_models/swin_t_backbone.py.
+#
+# This file is intended as the first integration point for Swin-T experiments.
+# Before long training runs, validate that the selected feature maps and channels
+# match the intended neck/head design for your YOLO26 variant.
+
+nc: 5
+
+backbone:
+  - [-1, 1, TorchVision, [768, swin_tiny_patch4_window7_224, True, [1, 2, 3]]]
+
+head:
+  - [0, 1, Index, [192, 0]]
+  - [0, 1, Index, [384, 1]]
+  - [0, 1, Index, [768, 2]]
+  - [[1, 2, 3], 1, Detect, [nc]]

@@ -1,6 +1,7 @@
 ultralytics
 torch
 torchvision
+timm
 pyyaml
 matplotlib
 pandas
