@@ -16,13 +16,14 @@ Updated: 2026-04-19
   - head выбирает карты признаков через `Index` с каналами `192/384/768` и передаёт их в `Detect`.
 - Путь baseline обучения сохранён отдельно и не заменён автоматически: [`scripts/train_baseline.py`](../scripts/train_baseline.py).
 - Зависимости для Swin-пути объявлены в `requirements.txt` (`torch`, `torchvision`, `timm`, `ultralytics`).
+- Entry points [`scripts/validate.py`](../scripts/validate.py) и [`scripts/predict_sample.py`](../scripts/predict_sample.py) автоматически добавляют root проекта в `sys.path` и выполняют best-effort регистрацию локальных custom backbones.
+- Есть отдельная проверка архитектурной интеграции: [`scripts/validate_swin_backbone.py`](../scripts/validate_swin_backbone.py).
 
 ### Inferred
 - Фича нацелена на экспериментальный режим интеграции (`scaffold`), а не на полностью верифицированную замену backbone для всех сценариев.
 - Для стабильного обучения критична согласованность `out_indices`/каналов между Swin backbone и `Index`/`Detect` слоями в YAML.
 
 ### Not established in repo
-- Нет подтверждённого в репозитории результата короткого/полного обучения `train_swin.py` с сохранённым валидным чекпоинтом.
 - Нет зафиксированного сравнения метрик baseline vs Swin-T на одном и том же датасете.
 - Нет CI/авто-проверки, которая бы гарантировала, что подмена `TorchVision` не ломается при обновлениях `ultralytics`.
 

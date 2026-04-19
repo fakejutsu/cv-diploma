@@ -4,6 +4,10 @@ import argparse
 import sys
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from utils import configure_ultralytics, extract_detection_metrics, resolve_device, resolve_save_dir, timestamp_tag
 
 
@@ -19,6 +23,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--name", help="Optional run name for validation artifacts.")
     parser.add_argument("--yolo-config-dir", type=Path, help="Directory for Ultralytics settings and cache files.")
     return parser.parse_args()
+
+
+def register_custom_backbones_if_available() -> None:
+    """
+    Best-effort registration of local custom backbones.
+    Required for checkpoints that depend on repository-local modules (e.g. Swin-T wrapper).
+    """
+
+    try:
+        from custom_models import register_swin_t_backbone
+
+        register_swin_t_backbone()
+    except Exception:
+        # Keep baseline validation working even if local custom modules are not available.
+        return
 
 
 def main() -> int:
@@ -41,6 +60,7 @@ def main() -> int:
     try:
         from ultralytics import YOLO
 
+        register_custom_backbones_if_available()
         model = YOLO(str(model_path))
         metrics = model.val(
             data=str(data_path),

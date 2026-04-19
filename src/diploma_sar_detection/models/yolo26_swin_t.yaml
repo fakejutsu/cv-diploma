@@ -11,7 +11,7 @@ nc: 5
 backbone:
   - [-1, 1, TorchVision, [768, swin_tiny_patch4_window7_224, True, [1, 2, 3]]]
 
-head:
+head: 
   - [0, 1, Index, [192, 0]]
   - [0, 1, Index, [384, 1]]
   - [0, 1, Index, [768, 2]]

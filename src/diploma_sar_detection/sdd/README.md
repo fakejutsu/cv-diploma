@@ -8,7 +8,7 @@
 - `<iteration_number>_<short_name>/iteration.md` — завершённая итерация.
 
 Текущая последняя итерация:
-- `001_swin_t_backbone_substitution/iteration.md`
+- `002_swin_backbone_validation_guard/iteration.md`
 
 ## Правила итераций
 
