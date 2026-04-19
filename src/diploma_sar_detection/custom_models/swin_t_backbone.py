@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Sequence
 
 import torch
-import torch.nn.functional as F
 from torch import Tensor, nn
 
 
@@ -36,14 +35,14 @@ class SwinTBackbone(nn.Module):
             features_only=True,
             img_size=img_size,
             out_indices=normalized_out_indices,
+            strict_img_size=False,
             dynamic_img_size=dynamic_img_size,
             dynamic_img_pad=dynamic_img_pad,
         )
         self.channels = tuple(int(channel) for channel in self.backbone.feature_info.channels())
 
     def forward(self, x: Tensor) -> list[Tensor]:
-        if x.shape[-2:] != (self.img_size, self.img_size):
-            x = F.interpolate(x, size=(self.img_size, self.img_size), mode="bilinear", align_corners=False)
+        # Keep original input spatial size to preserve correct Detect stride computation.
         features = self.backbone(x)
         outputs: list[Tensor] = []
         for feature in features:

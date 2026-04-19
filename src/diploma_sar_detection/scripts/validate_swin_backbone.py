@@ -48,6 +48,14 @@ def _get_backbone_layer(yolo_model: Any) -> Any:
     return layers[0]
 
 
+def _get_detect_layer(yolo_model: Any) -> Any:
+    core_model = getattr(yolo_model, "model", None)
+    layers = getattr(core_model, "model", None)
+    if layers is None or len(layers) == 0:
+        raise RuntimeError("Failed to resolve model layers from YOLO object.")
+    return layers[-1]
+
+
 def main() -> int:
     args = parse_args()
     model_yaml_path = args.model_yaml.expanduser().resolve()
@@ -73,6 +81,7 @@ def main() -> int:
 
         yaml_model = YOLO(str(model_yaml_path))
         yaml_backbone = _get_backbone_layer(yaml_model)
+        yaml_detect = _get_detect_layer(yaml_model)
 
         print("YAML build checks")
         print("-----------------")
@@ -93,6 +102,19 @@ def main() -> int:
             print(f"Feature shapes:    {actual_shapes}")
             if actual_channels != expected_channels:
                 raise RuntimeError("Backbone output channels do not match `Index` channel contract.")
+
+            strides = [float(value) for value in getattr(yaml_detect, "stride", [])]
+            print(f"Detect strides:    {strides}")
+            if not strides:
+                raise RuntimeError("Detect stride tensor is empty.")
+            expected_strides = [8.0, 16.0, 32.0]
+            if len(strides) != len(expected_strides) or any(
+                abs(actual - expected) > 0.01 for actual, expected in zip(strides, expected_strides)
+            ):
+                raise RuntimeError(
+                    "Unexpected Detect strides for Swin-T integration. "
+                    f"Expected {expected_strides}, got {strides}."
+                )
 
         if checkpoint_path is not None:
             checkpoint_model = YOLO(str(checkpoint_path))

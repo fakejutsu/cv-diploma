@@ -1,6 +1,6 @@
 # CURRENT_SPEC
 
-Updated: 2026-04-19
+Updated: 2026-04-20
 
 ## Scope
 Текущее состояние фичи подмены стандартного YOLO-backbone на `Swin-T` в training pipeline.
@@ -11,6 +11,7 @@ Updated: 2026-04-19
 - В проекте есть отдельный entrypoint для экспериментов со Swin-T: [`scripts/train_swin.py`](../scripts/train_swin.py).
 - Перед созданием модели вызывается `register_swin_t_backbone()`, который monkey-patch'ит `ultralytics.nn.tasks.TorchVision` на `SwinTBackbone`: [`custom_models/register.py`](../custom_models/register.py).
 - `SwinTBackbone` реализован как timm-обёртка (`features_only=True`) с выдачей multi-scale features и приведением к формату `NCHW`: [`custom_models/swin_t_backbone.py`](../custom_models/swin_t_backbone.py).
+- `SwinTBackbone` не выполняет принудительный внутренний resize входа; spatial размер задаётся внешним training pipeline (`imgsz`) и сохраняет корректный stride-контракт для `Detect`.
 - Кастомная архитектура описана в [`models/yolo26_swin_t.yaml`](../models/yolo26_swin_t.yaml):
   - backbone использует `TorchVision` с `swin_tiny_patch4_window7_224` и `out_indices=[1,2,3]`;
   - head выбирает карты признаков через `Index` с каналами `192/384/768` и передаёт их в `Detect`.
@@ -18,6 +19,7 @@ Updated: 2026-04-19
 - Зависимости для Swin-пути объявлены в `requirements.txt` (`torch`, `torchvision`, `timm`, `ultralytics`).
 - Entry points [`scripts/validate.py`](../scripts/validate.py) и [`scripts/predict_sample.py`](../scripts/predict_sample.py) автоматически добавляют root проекта в `sys.path` и выполняют best-effort регистрацию локальных custom backbones.
 - Есть отдельная проверка архитектурной интеграции: [`scripts/validate_swin_backbone.py`](../scripts/validate_swin_backbone.py).
+- Guard-скрипт `validate_swin_backbone.py` проверяет не только channel contract (`192/384/768`), но и ожидаемые `Detect` strides `[8,16,32]`.
 
 ### Inferred
 - Фича нацелена на экспериментальный режим интеграции (`scaffold`), а не на полностью верифицированную замену backbone для всех сценариев.
