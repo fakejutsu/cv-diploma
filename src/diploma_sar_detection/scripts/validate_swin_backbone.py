@@ -56,6 +56,22 @@ def _get_detect_layer(yolo_model: Any) -> Any:
     return layers[-1]
 
 
+def _extract_detect_input_channels(detect_layer: Any) -> list[int]:
+    channels: list[int] = []
+    branches = getattr(detect_layer, "cv2", None)
+    if not branches:
+        return channels
+
+    for branch in branches:
+        first_layer = branch[0]
+        conv = getattr(first_layer, "conv", None)
+        if conv is None:
+            raise RuntimeError("Failed to resolve input channels from Detect head branch.")
+        channels.append(int(conv.in_channels))
+
+    return channels
+
+
 def main() -> int:
     args = parse_args()
     model_yaml_path = args.model_yaml.expanduser().resolve()
@@ -72,8 +88,8 @@ def main() -> int:
 
     try:
         model_spec = yaml.safe_load(model_yaml_path.read_text(encoding="utf-8"))
-        expected_channels = _extract_expected_index_channels(model_spec)
-        if not expected_channels:
+        expected_index_channels = _extract_expected_index_channels(model_spec)
+        if not expected_index_channels:
             raise RuntimeError("No expected channels were found from `Index` layers in model YAML.")
 
         register_swin_t_backbone()
@@ -97,11 +113,19 @@ def main() -> int:
                 features = yaml_backbone(sample)
             actual_channels = [int(feature.shape[1]) for feature in features]
             actual_shapes = [tuple(feature.shape) for feature in features]
-            print(f"Expected channels: {expected_channels}")
+            print(f"Expected channels: {expected_index_channels}")
             print(f"Actual channels:   {actual_channels}")
             print(f"Feature shapes:    {actual_shapes}")
-            if actual_channels != expected_channels:
+            if actual_channels != expected_index_channels:
                 raise RuntimeError("Backbone output channels do not match `Index` channel contract.")
+
+            detect_input_channels = _extract_detect_input_channels(yaml_detect)
+            print(f"Detect input channels: {detect_input_channels}")
+            if detect_input_channels != expected_index_channels:
+                raise RuntimeError(
+                    "Detect input channels do not match the expected Swin channel contract "
+                    f"{expected_index_channels}. Got {detect_input_channels}."
+                )
 
             strides = [float(value) for value in getattr(yaml_detect, "stride", [])]
             print(f"Detect strides:    {strides}")
