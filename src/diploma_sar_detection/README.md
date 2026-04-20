@@ -50,6 +50,7 @@ If you need a CUDA-enabled PyTorch build, install it explicitly after `requireme
 diploma_sar_detection/
 |-- custom_models/
 |   |-- __init__.py
+|   |-- hybrid_cnn_swin_t_backbone.py
 |   |-- register.py
 |   `-- swin_t_backbone.py
 |-- data/
@@ -57,6 +58,7 @@ diploma_sar_detection/
 |   `-- README_data.md
 |-- models/
 |   |-- README_models.md
+|   |-- yolo26_cnn_swin_t.yaml
 |   `-- yolo26_swin_t.yaml
 |-- scripts/
 |   |-- check_dataset.py
@@ -202,23 +204,25 @@ This checks that:
 - Ultralytics can build the dataloader
 - the model starts training without committing to a full local run
 
-### 2b. Swin-T scaffold
+### 2b. Swin-based scaffold (hybrid CNN+Swin default)
 
-The project now includes a first scaffold for custom-backbone experiments:
+The project includes a scaffold for Swin-based custom-backbone experiments:
 
-- [custom_models/swin_t_backbone.py](./custom_models/swin_t_backbone.py) wraps a timm Swin-T backbone
-- [custom_models/register.py](./custom_models/register.py) registers the wrapper for Ultralytics YAML parsing
-- [models/yolo26_swin_t.yaml](./models/yolo26_swin_t.yaml) is the initial custom architecture template
-- [scripts/train_swin.py](./scripts/train_swin.py) is the dedicated entrypoint for Swin-T experiments
+- [custom_models/hybrid_cnn_swin_t_backbone.py](./custom_models/hybrid_cnn_swin_t_backbone.py) adds a lightweight CNN stem before Swin-T
+- [custom_models/swin_t_backbone.py](./custom_models/swin_t_backbone.py) keeps the legacy pure Swin-T path
+- [custom_models/register.py](./custom_models/register.py) provides explicit variant registration (`cnn_swin_t` / `swin_t`)
+- [models/yolo26_cnn_swin_t.yaml](./models/yolo26_cnn_swin_t.yaml) is the default hybrid architecture template
+- [models/yolo26_swin_t.yaml](./models/yolo26_swin_t.yaml) is the legacy pure Swin-T template for A/B
+- [scripts/train_swin.py](./scripts/train_swin.py) is the dedicated entrypoint for Swin-based experiments
 
 Install `timm` from `requirements.txt` before using this path.
 
-Short smoke test for the custom pipeline:
+Short smoke test for the hybrid custom pipeline:
 
 ```bash
 python scripts/train_swin.py \
   --data data/dataset.yaml \
-  --model models/yolo26_swin_t.yaml \
+  --model models/yolo26_cnn_swin_t.yaml \
   --epochs 1 \
   --imgsz 640 \
   --batch 8 \
@@ -226,10 +230,19 @@ python scripts/train_swin.py \
   --workers 4 \
   --fraction 0.01 \
   --project runs \
-  --name smoke_swin_t
+  --name smoke_cnn_swin_t
 ```
 
-This scaffold gives the project a clean place to integrate and debug `YOLO26 + Swin-T`, but it should still be validated with a short run before committing to long training.
+Legacy pure Swin-T run (optional):
+
+```bash
+python scripts/train_swin.py \
+  --data data/dataset.yaml \
+  --model models/yolo26_swin_t.yaml \
+  --backbone-variant swin_t
+```
+
+This scaffold gives the project a clean place to integrate and debug `YOLO26 + CNN+Swin` and `YOLO26 + Swin-T`, but it should still be validated with a short run before committing to long training.
 
 ### 3. Validate best model
 
@@ -252,6 +265,8 @@ The script runs `model.val(...)`, prints:
 
 Validation artifacts are saved into a dedicated folder inside `runs/`.
 
+For legacy pure Swin-T checkpoints, add `--backbone-variant swin_t`.
+
 ### 4. Run inference on samples
 
 ```bash
@@ -270,6 +285,8 @@ python scripts/predict_sample.py \
 - a directory with images
 
 Rendered predictions with bounding boxes are saved to the requested directory.
+
+For legacy pure Swin-T checkpoints, add `--backbone-variant swin_t`.
 
 ## Where results are stored
 

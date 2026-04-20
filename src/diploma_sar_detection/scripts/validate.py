@@ -15,6 +15,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run standalone validation for a trained YOLO model.")
     parser.add_argument("--model", required=True, type=Path, help="Path to model checkpoint.")
     parser.add_argument("--data", required=True, type=Path, help="Path to dataset.yaml.")
+    parser.add_argument(
+        "--backbone-variant",
+        default="auto",
+        choices=("auto", "swin_t", "cnn_swin_t"),
+        help="Custom backbone registration variant. Use auto to infer order from checkpoint name.",
+    )
     parser.add_argument("--imgsz", type=int, default=640, help="Validation image size.")
     parser.add_argument("--batch", type=int, default=4, help="Validation batch size.")
     parser.add_argument("--device", default=None, help="Device id like 0 or 'cpu'.")
@@ -25,19 +31,31 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def register_custom_backbones_if_available() -> None:
+def register_custom_backbones_if_available(variant: str) -> None:
     """
     Best-effort registration of local custom backbones.
     Required for checkpoints that depend on repository-local modules (e.g. Swin-T wrapper).
     """
 
     try:
-        from custom_models import register_swin_t_backbone
+        from custom_models import register_backbone
 
-        register_swin_t_backbone()
+        register_backbone(variant)
     except Exception:
         # Keep baseline validation working even if local custom modules are not available.
         return
+
+
+def resolve_backbone_variant_candidates(requested_variant: str, model_path: Path) -> tuple[str, ...]:
+    if requested_variant != "auto":
+        return (requested_variant,)
+
+    model_name = model_path.name.lower()
+    if "cnn_swin" in model_name:
+        return ("cnn_swin_t", "swin_t")
+    if "swin" in model_name:
+        return ("swin_t", "cnn_swin_t")
+    return ("cnn_swin_t", "swin_t")
 
 
 def main() -> int:
@@ -60,8 +78,25 @@ def main() -> int:
     try:
         from ultralytics import YOLO
 
-        register_custom_backbones_if_available()
-        model = YOLO(str(model_path))
+        model = None
+        active_backbone_variant = "none"
+        candidate_variants = resolve_backbone_variant_candidates(args.backbone_variant, model_path)
+        last_model_init_error: Exception | None = None
+
+        for variant in candidate_variants:
+            try:
+                register_custom_backbones_if_available(variant)
+                model = YOLO(str(model_path))
+                active_backbone_variant = variant
+                break
+            except Exception as exc:
+                last_model_init_error = exc
+
+        if model is None:
+            if last_model_init_error is not None:
+                raise last_model_init_error
+            raise RuntimeError("Failed to initialize YOLO model.")
+
         metrics = model.val(
             data=str(data_path),
             imgsz=args.imgsz,
@@ -86,6 +121,7 @@ def main() -> int:
         print(f"{metric_name}: {formatted}")
 
     print(f"YOLO config directory: {config_dir}")
+    print(f"Backbone variant: {active_backbone_variant}")
     save_dir = resolve_save_dir(metrics, project_dir / run_name)
     print(f"\nValidation artifacts saved to: {save_dir}")
     return 0

@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Type
 
 import torch
 import yaml
@@ -12,15 +12,26 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from custom_models import SwinTBackbone, register_swin_t_backbone
+from custom_models import HybridCnnSwinTBackbone, SwinTBackbone, register_backbone
 from utils import configure_ultralytics
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Validate that YOLO26 Swin-T architecture is wired correctly in this repository."
+        description="Validate that YOLO26 Swin-based backbones are wired correctly in this repository."
     )
-    parser.add_argument("--model-yaml", type=Path, default=Path("models/yolo26_swin_t.yaml"), help="Path to model YAML.")
+    parser.add_argument(
+        "--model-yaml",
+        type=Path,
+        default=Path("models/yolo26_cnn_swin_t.yaml"),
+        help="Path to model YAML.",
+    )
+    parser.add_argument(
+        "--backbone-variant",
+        default="auto",
+        choices=("auto", "swin_t", "cnn_swin_t"),
+        help="Backbone registration variant. Use auto to infer from --model-yaml path.",
+    )
     parser.add_argument("--checkpoint", type=Path, help="Optional checkpoint to verify loading path.")
     parser.add_argument("--imgsz", type=int, default=320, help="Input image size for backbone forward validation.")
     parser.add_argument("--skip-forward", action="store_true", help="Skip dummy forward shape validation.")
@@ -38,6 +49,26 @@ def _extract_expected_index_channels(model_spec: dict[str, Any]) -> list[int]:
         if module_name == "Index" and isinstance(args, list) and args:
             channels.append(int(args[0]))
     return channels
+
+
+def _resolve_backbone_variant(arg_variant: str, model_yaml_path: Path) -> str:
+    if arg_variant != "auto":
+        return arg_variant
+
+    model_name = model_yaml_path.name.lower()
+    if "cnn_swin" in model_name:
+        return "cnn_swin_t"
+    if "swin" in model_name:
+        return "swin_t"
+    return "cnn_swin_t"
+
+
+def _expected_backbone_class(variant: str) -> Type[Any]:
+    if variant == "swin_t":
+        return SwinTBackbone
+    if variant == "cnn_swin_t":
+        return HybridCnnSwinTBackbone
+    raise ValueError(f"Unsupported backbone variant: {variant}")
 
 
 def _get_backbone_layer(yolo_model: Any) -> Any:
@@ -84,6 +115,8 @@ def main() -> int:
         print(f"Checkpoint not found: {checkpoint_path}", file=sys.stderr)
         return 2
 
+    backbone_variant = _resolve_backbone_variant(args.backbone_variant, model_yaml_path)
+    expected_backbone_cls = _expected_backbone_class(backbone_variant)
     configure_ultralytics(args.yolo_config_dir)
 
     try:
@@ -92,7 +125,7 @@ def main() -> int:
         if not expected_index_channels:
             raise RuntimeError("No expected channels were found from `Index` layers in model YAML.")
 
-        register_swin_t_backbone()
+        register_backbone(backbone_variant)
         from ultralytics import YOLO
 
         yaml_model = YOLO(str(model_yaml_path))
@@ -101,11 +134,15 @@ def main() -> int:
 
         print("YAML build checks")
         print("-----------------")
+        print(f"Backbone variant: {backbone_variant}")
         print(f"Backbone type: {type(yaml_backbone).__name__}")
         print(f"Backbone class: {yaml_backbone.__class__}")
 
-        if not isinstance(yaml_backbone, SwinTBackbone):
-            raise RuntimeError("Backbone is not SwinTBackbone after registration.")
+        if not isinstance(yaml_backbone, expected_backbone_cls):
+            raise RuntimeError(
+                "Backbone type mismatch after registration. "
+                f"Expected {expected_backbone_cls.__name__}, got {type(yaml_backbone).__name__}."
+            )
 
         if not args.skip_forward:
             with torch.no_grad():
@@ -123,7 +160,7 @@ def main() -> int:
             print(f"Detect input channels: {detect_input_channels}")
             if detect_input_channels != expected_index_channels:
                 raise RuntimeError(
-                    "Detect input channels do not match the expected Swin channel contract "
+                    "Detect input channels do not match the expected Swin-based channel contract "
                     f"{expected_index_channels}. Got {detect_input_channels}."
                 )
 
@@ -136,7 +173,7 @@ def main() -> int:
                 abs(actual - expected) > 0.01 for actual, expected in zip(strides, expected_strides)
             ):
                 raise RuntimeError(
-                    "Unexpected Detect strides for Swin-T integration. "
+                    "Unexpected Detect strides for Swin-based integration. "
                     f"Expected {expected_strides}, got {strides}."
                 )
 
@@ -147,8 +184,11 @@ def main() -> int:
             print("-----------------")
             print(f"Checkpoint: {checkpoint_path}")
             print(f"Backbone type: {type(checkpoint_backbone).__name__}")
-            if not isinstance(checkpoint_backbone, SwinTBackbone):
-                raise RuntimeError("Checkpoint loads with a non-Swin backbone.")
+            if not isinstance(checkpoint_backbone, expected_backbone_cls):
+                raise RuntimeError(
+                    "Checkpoint loads with unexpected backbone type. "
+                    f"Expected {expected_backbone_cls.__name__}, got {type(checkpoint_backbone).__name__}."
+                )
 
         print("\nValidation result: OK")
         return 0
