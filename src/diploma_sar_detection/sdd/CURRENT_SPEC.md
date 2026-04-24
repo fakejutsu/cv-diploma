@@ -6,7 +6,8 @@ Updated: 2026-04-24
 Текущее состояние экспериментальных Swin-based интеграций в training pipeline YOLO26:
 - legacy pure `Swin-T` backbone replacement;
 - hybrid `CNN -> Swin-T` backbone replacement;
-- `YOLO26n + SwinContextBlock(P5)` как context-enhancement путь без замены штатного CNN-backbone.
+- `YOLO26n + SwinContextBlock(P5)` как context-enhancement путь без замены штатного CNN-backbone;
+- `YOLO26n + light SwinContextBlock(P4)` как отдельный light context variant.
 
 ## System State
 
@@ -24,14 +25,21 @@ Updated: 2026-04-24
 - Оба backbone не выполняют принудительный внутренний resize входа; spatial размер задаётся внешним training pipeline (`imgsz`) и сохраняет корректный stride-контракт для `Detect`.
 - В гибридном пути stem не выполняет downsample (stride=1), поэтому `Detect` сохраняет ожидаемые strides `[8,16,32]`.
 - Поддерживаются три YAML-шаблона архитектуры:
+- Поддерживаются четыре YAML-шаблона архитектуры:
   - [`models/yolo26_cnn_swin_t.yaml`](../models/yolo26_cnn_swin_t.yaml) — дефолтный гибридный путь;
   - [`models/yolo26_swin_t.yaml`](../models/yolo26_swin_t.yaml) — legacy pure Swin-T путь;
-  - [`models/yolo26n_swin_context_p5.yaml`](../models/yolo26n_swin_context_p5.yaml) — `YOLO26n + SwinContextBlock(P5)` без замены backbone.
+  - [`models/yolo26n_swin_context_p5.yaml`](../models/yolo26n_swin_context_p5.yaml) — `YOLO26n + SwinContextBlock(P5)` без замены backbone;
+  - [`models/yolo26n_swin_context_p4_light.yaml`](../models/yolo26n_swin_context_p4_light.yaml) — `YOLO26n + light SwinContextBlock(P4)` без замены backbone.
 - В `models/yolo26n_swin_context_p5.yaml`:
   - штатный `YOLO26n` backbone сохранён;
   - после `P5` добавлен `SwinContextBlock`;
   - выполняется `Concat(P5, context)` и `Conv1x1`-проекция обратно в fused `P5`;
   - затем используется штатный `YOLO26n` neck/head.
+- В `models/yolo26n_swin_context_p4_light.yaml`:
+  - штатный `YOLO26n` backbone сохранён;
+  - в начале head над `P4` из слоя `6` добавлен light `SwinContextBlock`;
+  - выполняется `Concat(P4, context)` и `Conv1x1`-проекция обратно в fused `P4`;
+  - далее в neck используется `fused P4`, а `P5` остаётся штатным.
 - Путь baseline обучения сохранён отдельно и не заменён автоматически: [`scripts/train_baseline.py`](../scripts/train_baseline.py).
 - Зависимости для Swin-пути объявлены в `requirements.txt` (`torch`, `torchvision`, `timm`, `ultralytics`).
 - Entry points [`scripts/validate.py`](../scripts/validate.py) и [`scripts/predict_sample.py`](../scripts/predict_sample.py):
@@ -48,16 +56,17 @@ Updated: 2026-04-24
 - `validate_swin_context.py` подтверждает для dummy input:
   - сборку baseline и context-модели;
   - корректный `forward`;
-  - shape-контракт `P5_backbone -> P5_context -> P5_fused`;
+  - shape-контракт `feature_backbone -> feature_context -> feature_fused` для `P5` и `P4-light` вариантов;
   - различие по числу параметров baseline vs modified.
 
 ### Inferred
 - Все Swin-based пути остаются экспериментальными scaffold-режимами, а не полностью верифицированной заменой базового пайплайна для всех сценариев.
 - Для стабильного обучения критична согласованность `out_indices`/каналов между Swin-based backbone, neck и `Detect` слоями в YAML.
 - `models/yolo26n_swin_context_p5.yaml` на текущем шаге привязан к `YOLO26n` scale (`n`) и не является универсальным шаблоном для `s/m/l/x`.
+- `models/yolo26n_swin_context_p4_light.yaml` так же привязан к `YOLO26n` scale (`n`) и не является универсальным шаблоном для `s/m/l/x`.
 
 ### Not established in repo
-- Нет зафиксированного сравнения метрик baseline vs pure `Swin-T` vs hybrid `CNN+Swin-T` vs `YOLO26n + SwinContextBlock(P5)` на одном и том же датасете.
+- Нет зафиксированного сравнения метрик baseline vs pure `Swin-T` vs hybrid `CNN+Swin-T` vs `YOLO26n + SwinContextBlock(P5)` vs `YOLO26n + light SwinContextBlock(P4)` на одном и том же датасете.
 - Нет CI/авто-проверки, которая бы гарантировала, что подмена `TorchVision` не ломается при обновлениях `ultralytics`.
 - Для context-path пока не зафиксирована отдельная стратегия экспорт/ONNX-совместимости.
 
@@ -69,5 +78,10 @@ Updated: 2026-04-24
 - Для `YOLO26n + SwinContextBlock(P5)` обязателен контракт:
   - `P5_backbone`, `P5_context` и `P5_fused` имеют одинаковые spatial размеры;
   - `P5_fused` возвращается к каналам штатного `YOLO26n P5`;
+  - baseline `YOLO26n` backbone/neck/head не заменяются.
+- Для `YOLO26n + light SwinContextBlock(P4)` обязателен контракт:
+  - `P4_backbone`, `P4_context` и `P4_fused` имеют одинаковые spatial размеры;
+  - `P4_fused` возвращается к каналам штатного `YOLO26n P4`;
+  - в neck вместо исходного `P4` используется `P4_fused`;
   - baseline `YOLO26n` backbone/neck/head не заменяются.
 - Артефакты обучения сохраняются в стандартной структуре `runs/<name>/weights/{best,last}.pt`.

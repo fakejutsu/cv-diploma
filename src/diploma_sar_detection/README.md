@@ -387,6 +387,14 @@ Typical training artifacts from Ultralytics include:
 python -c "import torch; print(torch.__version__); print(torch.version.cuda); print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0))"
 ```
 
+If the machine should use NVIDIA GPU directly from project requirements, install the dedicated CUDA requirements file instead of the generic one:
+
+```bash
+pip install -r requirements-gpu-cu124.txt
+```
+
+This file forces the official PyTorch CUDA 12.4 wheel index and then installs the project dependencies from PyPI as needed. It is intended for Linux/Windows GPU hosts with a compatible NVIDIA driver, not for CPU-only machines or macOS.
+
 ### Upload and configure
 
 - Upload the project folder.
