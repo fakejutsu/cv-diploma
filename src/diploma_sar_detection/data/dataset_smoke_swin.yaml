@@ -1,0 +1,11 @@
+path: /Users/fakejutsu/bmstu/diploma/src/cv-diploma/src/diploma_sar_detection/runs/smoke_dataset_swin_t_20260419
+train: images/train
+val: images/val
+test: images/test
+nc: 5
+names:
+- swimmer
+- boat
+- jetski
+- life_saving_appliances
+- buoy

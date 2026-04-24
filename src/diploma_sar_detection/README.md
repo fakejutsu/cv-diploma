@@ -208,7 +208,7 @@ This checks that:
 
 The project includes a scaffold for Swin-based custom-backbone experiments:
 
-- [custom_models/hybrid_cnn_swin_t_backbone.py](./custom_models/hybrid_cnn_swin_t_backbone.py) adds a lightweight CNN stem before Swin-T
+- [custom_models/hybrid_cnn_swin_t_backbone.py](./custom_models/hybrid_cnn_swin_t_backbone.py) adds a stride-preserving YOLO-style stem (`Conv/C3k2`) before Swin-T
 - [custom_models/swin_t_backbone.py](./custom_models/swin_t_backbone.py) keeps the legacy pure Swin-T path
 - [custom_models/register.py](./custom_models/register.py) provides explicit variant registration (`cnn_swin_t` / `swin_t`)
 - [models/yolo26_cnn_swin_t.yaml](./models/yolo26_cnn_swin_t.yaml) is the default hybrid architecture template
@@ -243,6 +243,71 @@ python scripts/train_swin.py \
 ```
 
 This scaffold gives the project a clean place to integrate and debug `YOLO26 + CNN+Swin` and `YOLO26 + Swin-T`, but it should still be validated with a short run before committing to long training.
+
+### 2c. YOLO26n + SwinContextBlock(P5)
+
+The repository also includes a lighter experimental path that keeps the stock `YOLO26n` backbone and inserts a Swin-style context block only on top of the backbone `P5` feature:
+
+- [custom_models/swin_context_block.py](./custom_models/swin_context_block.py) implements the local `SwinContextBlock`
+- [models/yolo26n_swin_context_p5.yaml](./models/yolo26n_swin_context_p5.yaml) defines `YOLO26n -> P5 -> SwinContextBlock -> Concat + Conv -> stock neck/head`
+- [scripts/train_swin_context.py](./scripts/train_swin_context.py) is the dedicated training entrypoint
+- [scripts/validate_swin_context.py](./scripts/validate_swin_context.py) performs a dummy-forward sanity check with shape and parameter reporting
+
+Run the architectural sanity check first:
+
+```bash
+python scripts/validate_swin_context.py --imgsz 640
+```
+
+Expected `P5` contract for `YOLO26n` at `640x640`:
+
+- `P5_backbone: (1, 256, 20, 20)`
+- `P5_context: (1, 256, 20, 20)`
+- `P5_fused: (1, 256, 20, 20)`
+
+Short smoke train:
+
+```bash
+python scripts/train_swin_context.py \
+  --data data/dataset.yaml \
+  --model models/yolo26n_swin_context_p5.yaml \
+  --weights yolo26n.pt \
+  --epochs 1 \
+  --imgsz 640 \
+  --batch 2 \
+  --device cpu \
+  --workers 0 \
+  --fraction 0.01 \
+  --project runs \
+  --name smoke_yolo26n_swin_context_p5
+```
+
+Longer comparison-style run, analogous to `train_swin.py`:
+
+```bash
+python3 scripts/train_swin_context.py \
+  --data data/dataset.yaml \
+  --model models/yolo26n_swin_context_p5.yaml \
+  --weights yolo26n.pt \
+  --project runs_cmp \
+  --name yolo26n_swin_context_p5_smoke \
+  --epochs 10 \
+  --imgsz 640 \
+  --batch 24 \
+  --device 0 \
+  --workers 4 \
+  --patience 10 \
+  --seed 42 \
+  --no-amp \
+  --optimizer SGD \
+  --fraction 0.1
+```
+
+Notes:
+
+- this path does not replace the YOLO backbone
+- the current YAML is intended specifically for `YOLO26n`
+- baseline warm start is done through `--weights yolo26n.pt`
 
 ### 3. Validate best model
 

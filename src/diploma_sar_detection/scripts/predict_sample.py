@@ -36,8 +36,9 @@ def register_custom_backbones_if_available(variant: str) -> None:
     """
 
     try:
-        from custom_models import register_backbone
+        from custom_models import register_backbone, register_context_modules
 
+        register_context_modules()
         register_backbone(variant)
     except Exception:
         # Keep baseline inference working even if local custom modules are not available.

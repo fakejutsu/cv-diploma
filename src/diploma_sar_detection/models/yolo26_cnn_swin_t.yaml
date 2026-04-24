@@ -1,4 +1,4 @@
-# Hybrid YOLO26 scaffold: lightweight CNN stem + timm Swin-T backbone.
+# Hybrid YOLO26 scaffold: stride-preserving YOLO-style stem + timm Swin-T backbone.
 # The `TorchVision` symbol is monkey-patched by scripts/train_swin.py to point
 # to custom_models.HybridCnnSwinTBackbone via `register_backbone("cnn_swin_t")`.
 
@@ -7,7 +7,7 @@ nc: 5
 backbone:
   # Args after Ultralytics TorchVision parsing:
   # [model_name, pretrained, out_indices, stem_channels]
-  - [-1, 1, TorchVision, [768, swin_tiny_patch4_window7_224, True, [1, 2, 3], [32, 64]]]
+  - [-1, 1, TorchVision, [768, swin_tiny_patch4_window7_224, True, [1, 2, 3], [64, 128]]]
 
 head:
   # Swin backbone outputs (P3, P4, P5)

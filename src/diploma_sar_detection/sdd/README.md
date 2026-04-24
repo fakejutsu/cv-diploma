@@ -8,7 +8,7 @@
 - `<iteration_number>_<short_name>/iteration.md` — завершённая итерация.
 
 Текущая последняя итерация:
-- `005_cnn_swin_hybrid_backbone/iteration.md`
+- `006_yolo_stem_stride_preserving/iteration.md`
 
 ## Правила итераций
 

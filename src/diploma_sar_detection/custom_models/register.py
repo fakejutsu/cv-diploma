@@ -1,6 +1,16 @@
 from __future__ import annotations
 
 
+def register_context_modules() -> None:
+    """Expose repository-local context modules to Ultralytics YAML parsing."""
+
+    from ultralytics.nn import tasks
+
+    from .swin_context_block import SwinContextBlock
+
+    tasks.SwinContextBlock = SwinContextBlock
+
+
 def register_backbone(variant: str = "cnn_swin_t") -> None:
     """
     Monkey-patch Ultralytics `TorchVision` symbol with a local custom backbone.
