@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,24 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from custom_models import register_context_modules
 from utils import configure_ultralytics, resolve_device, resolve_save_dir, set_seed
+
+
+_BASELINE_TO_CONTEXT_LAYER_REMAP = {
+    **{index: index for index in range(0, 11)},
+    11: 14,
+    12: 15,
+    13: 16,
+    14: 17,
+    15: 18,
+    16: 19,
+    17: 20,
+    18: 21,
+    19: 22,
+    20: 23,
+    21: 24,
+    22: 25,
+    23: 26,
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -82,6 +101,71 @@ def _resolve_best_checkpoint(model: Any, fallback_save_dir: Path) -> Path:
     return fallback_save_dir / "weights" / "best.pt"
 
 
+def _remap_model_key(key: str, index_remap: dict[int, int]) -> str:
+    parts = key.split(".")
+    if len(parts) > 1 and parts[0] == "model" and parts[1].isdigit():
+        layer_index = int(parts[1])
+        if layer_index in index_remap:
+            parts[1] = str(index_remap[layer_index])
+    return ".".join(parts)
+
+
+def _collect_compatible_weights(
+    source_state_dict: dict[str, Any],
+    target_state_dict: dict[str, Any],
+    *,
+    index_remap: dict[int, int] | None = None,
+) -> tuple[dict[str, Any], Counter[int]]:
+    compatible: dict[str, Any] = {}
+    counts: Counter[int] = Counter()
+
+    for source_key, value in source_state_dict.items():
+        target_key = _remap_model_key(source_key, index_remap or {}) if index_remap else source_key
+        target_value = target_state_dict.get(target_key)
+        if target_value is None or getattr(target_value, "shape", None) != getattr(value, "shape", None):
+            continue
+
+        compatible[target_key] = value
+        parts = target_key.split(".")
+        if len(parts) > 1 and parts[0] == "model" and parts[1].isdigit():
+            counts[int(parts[1])] += 1
+
+    return compatible, counts
+
+
+def _load_pretrained_weights(model: Any, weights_path: Path) -> None:
+    from ultralytics.nn.tasks import torch_safe_load
+
+    checkpoint, _ = torch_safe_load(str(weights_path))
+    pretrained_model = checkpoint.get("ema") or checkpoint["model"]
+    source_state_dict = pretrained_model.float().state_dict()
+    target_state_dict = model.model.state_dict()
+
+    exact_weights, exact_counts = _collect_compatible_weights(source_state_dict, target_state_dict)
+    remapped_weights, remapped_counts = _collect_compatible_weights(
+        source_state_dict,
+        target_state_dict,
+        index_remap=_BASELINE_TO_CONTEXT_LAYER_REMAP,
+    )
+
+    if len(remapped_weights) > len(exact_weights):
+        selected_weights = remapped_weights
+        selected_counts = remapped_counts
+        strategy = "remapped"
+    else:
+        selected_weights = exact_weights
+        selected_counts = exact_counts
+        strategy = "exact"
+
+    model.model.load_state_dict(selected_weights, strict=False)
+
+    detect_matches = selected_counts.get(26, 0)
+    print(
+        f"Pretrained weight transfer: strategy={strategy}, "
+        f"matched={len(selected_weights)}/{len(target_state_dict)}, detect_matches={detect_matches}"
+    )
+
+
 def main() -> int:
     args = parse_args()
     data_path = args.data.expanduser().resolve()
@@ -134,7 +218,7 @@ def main() -> int:
         register_context_modules()
         model = YOLO(str(model_path))
         if weights_path is not None:
-            model.load(str(weights_path))
+            _load_pretrained_weights(model, weights_path)
 
         train_kwargs: dict[str, Any] = {
             "data": str(data_path),
