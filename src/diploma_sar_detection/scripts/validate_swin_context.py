@@ -29,7 +29,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--imgsz", type=int, default=640, help="Dummy input image size.")
     parser.add_argument(
         "--variant",
-        choices=("auto", "p5", "p4_light"),
+        choices=("auto", "p5", "p4_light", "gated_p4_p5"),
         default="auto",
         help="Expected context variant. Use auto to infer from YAML filename.",
     )
@@ -53,17 +53,41 @@ def _resolve_variant(variant: str, model_yaml_path: Path) -> str:
         return variant
 
     model_name = model_yaml_path.name.lower()
+    if "gated_swin_p4_p5" in model_name:
+        return "gated_p4_p5"
     if "p4_light" in model_name:
         return "p4_light"
     return "p5"
 
 
-def _hook_indices(variant: str) -> tuple[int, int, int]:
+def _hook_indices(variant: str) -> dict[str, int]:
+    if variant == "gated_p4_p5":
+        return {
+            "p4_backbone": 6,
+            "p4_out": 11,
+            "p5_backbone": 10,
+            "p5_out": 12,
+        }
     if variant == "p4_light":
-        return 6, 11, 13
+        return {
+            "feature_backbone": 6,
+            "feature_context": 11,
+            "feature_fused": 13,
+        }
     if variant == "p5":
-        return 10, 11, 13
+        return {
+            "feature_backbone": 10,
+            "feature_context": 11,
+            "feature_fused": 13,
+        }
     raise ValueError(f"Unsupported context variant: {variant}")
+
+
+def _print_layer_table(yolo_model: Any) -> None:
+    print("\nLayer table")
+    print("-----------")
+    for index, layer in enumerate(yolo_model.model.model):
+        print(f"{index:2d} | from={str(layer.f):<10} | type={layer.type}")
 
 
 def main() -> int:
@@ -86,11 +110,10 @@ def main() -> int:
 
         sample = torch.randn(1, 3, args.imgsz, args.imgsz)
         captured: dict[str, Any] = {}
-        backbone_index, context_index, fused_index = _hook_indices(variant)
+        hook_indices = _hook_indices(variant)
         hooks = [
-            context.model.model[backbone_index].register_forward_hook(_capture_layer_output(captured, "feature_backbone")),
-            context.model.model[context_index].register_forward_hook(_capture_layer_output(captured, "feature_context")),
-            context.model.model[fused_index].register_forward_hook(_capture_layer_output(captured, "feature_fused")),
+            context.model.model[layer_index].register_forward_hook(_capture_layer_output(captured, key))
+            for key, layer_index in hook_indices.items()
         ]
 
         with torch.no_grad():
@@ -110,26 +133,42 @@ def main() -> int:
         print(f"Context output type:  {type(context_output).__name__}")
         print(f"Baseline parameters: {_count_parameters(baseline.model):,}")
         print(f"Context parameters:  {_count_parameters(context.model):,}")
+        _print_layer_table(context)
 
-        for key in ("feature_backbone", "feature_context", "feature_fused"):
+        for key in hook_indices:
             value = captured.get(key)
             if value is None or not isinstance(value, torch.Tensor):
                 raise RuntimeError(f"Failed to capture tensor for {key}.")
             print(f"{key}: {tuple(value.shape)}")
 
-        feature_backbone = captured["feature_backbone"]
-        feature_context = captured["feature_context"]
-        feature_fused = captured["feature_fused"]
-        if feature_backbone.shape != feature_context.shape:
-            raise RuntimeError(
-                "Context branch output shape mismatch. "
-                f"backbone={tuple(feature_backbone.shape)}, context={tuple(feature_context.shape)}."
-            )
-        if feature_backbone.shape != feature_fused.shape:
-            raise RuntimeError(
-                "Fused feature shape mismatch. "
-                f"backbone={tuple(feature_backbone.shape)}, fused={tuple(feature_fused.shape)}."
-            )
+        if variant == "gated_p4_p5":
+            p4_backbone = captured["p4_backbone"]
+            p4_out = captured["p4_out"]
+            p5_backbone = captured["p5_backbone"]
+            p5_out = captured["p5_out"]
+            if p4_backbone.shape != p4_out.shape:
+                raise RuntimeError(f"Gated P4 shape mismatch. cnn={tuple(p4_backbone.shape)}, out={tuple(p4_out.shape)}.")
+            if p5_backbone.shape != p5_out.shape:
+                raise RuntimeError(f"Gated P5 shape mismatch. cnn={tuple(p5_backbone.shape)}, out={tuple(p5_out.shape)}.")
+
+            p4_gate = context.model.model[11]
+            p5_gate = context.model.model[12]
+            print(f"alpha_mean_p4: {p4_gate.alpha_mean:.6f}")
+            print(f"alpha_mean_p5: {p5_gate.alpha_mean:.6f}")
+        else:
+            feature_backbone = captured["feature_backbone"]
+            feature_context = captured["feature_context"]
+            feature_fused = captured["feature_fused"]
+            if feature_backbone.shape != feature_context.shape:
+                raise RuntimeError(
+                    "Context branch output shape mismatch. "
+                    f"backbone={tuple(feature_backbone.shape)}, context={tuple(feature_context.shape)}."
+                )
+            if feature_backbone.shape != feature_fused.shape:
+                raise RuntimeError(
+                    "Fused feature shape mismatch. "
+                    f"backbone={tuple(feature_backbone.shape)}, fused={tuple(feature_fused.shape)}."
+                )
 
         print("\nValidation result: OK")
         return 0

@@ -7,7 +7,8 @@ Updated: 2026-04-24
 - legacy pure `Swin-T` backbone replacement;
 - hybrid `CNN -> Swin-T` backbone replacement;
 - `YOLO26n + SwinContextBlock(P5)` как context-enhancement путь без замены штатного CNN-backbone;
-- `YOLO26n + light SwinContextBlock(P4)` как отдельный light context variant.
+- `YOLO26n + light SwinContextBlock(P4)` как отдельный light context variant;
+- `YOLO26n + GatedSwinFusion(P4, P5)` как channel-wise gated context variant.
 
 ## System State
 
@@ -22,14 +23,15 @@ Updated: 2026-04-24
 - `SwinTBackbone` реализован как timm-обёртка (`features_only=True`) с выдачей multi-scale features и приведением к формату `NCHW`: [`custom_models/swin_t_backbone.py`](../custom_models/swin_t_backbone.py).
 - `HybridCnnSwinTBackbone` реализует `YOLO-style stride-preserving stem (Conv/C3k2) -> timm Swin-T(features_only)` и выдаёт multi-scale features в `NCHW`: [`custom_models/hybrid_cnn_swin_t_backbone.py`](../custom_models/hybrid_cnn_swin_t_backbone.py).
 - `SwinContextBlock` реализован как лёгкий Swin-style context enhancer поверх уже вычисленного YOLO feature map `P5`, использует `torchvision.models.swin_transformer.SwinTransformerBlock` и сохраняет `NCHW`-контракт входа/выхода: [`custom_models/swin_context_block.py`](../custom_models/swin_context_block.py).
+- `GatedSwinFusion` реализован как channel-wise gated fusion между исходным CNN feature map и его Swin-enhanced контекстом, использует обучаемый `raw_alpha` shape `[1, C, 1, 1]`: [`custom_models/gated_swin_fusion.py`](../custom_models/gated_swin_fusion.py).
 - Оба backbone не выполняют принудительный внутренний resize входа; spatial размер задаётся внешним training pipeline (`imgsz`) и сохраняет корректный stride-контракт для `Detect`.
 - В гибридном пути stem не выполняет downsample (stride=1), поэтому `Detect` сохраняет ожидаемые strides `[8,16,32]`.
-- Поддерживаются три YAML-шаблона архитектуры:
-- Поддерживаются четыре YAML-шаблона архитектуры:
+- Поддерживаются пять YAML-шаблонов архитектуры:
   - [`models/yolo26_cnn_swin_t.yaml`](../models/yolo26_cnn_swin_t.yaml) — дефолтный гибридный путь;
   - [`models/yolo26_swin_t.yaml`](../models/yolo26_swin_t.yaml) — legacy pure Swin-T путь;
   - [`models/yolo26n_swin_context_p5.yaml`](../models/yolo26n_swin_context_p5.yaml) — `YOLO26n + SwinContextBlock(P5)` без замены backbone;
-  - [`models/yolo26n_swin_context_p4_light.yaml`](../models/yolo26n_swin_context_p4_light.yaml) — `YOLO26n + light SwinContextBlock(P4)` без замены backbone.
+  - [`models/yolo26n_swin_context_p4_light.yaml`](../models/yolo26n_swin_context_p4_light.yaml) — `YOLO26n + light SwinContextBlock(P4)` без замены backbone;
+  - [`models/yolo26n_gated_swin_p4_p5.yaml`](../models/yolo26n_gated_swin_p4_p5.yaml) — `YOLO26n + GatedSwinFusion(P4, P5)` без замены backbone.
 - В `models/yolo26n_swin_context_p5.yaml`:
   - штатный `YOLO26n` backbone сохранён;
   - после `P5` добавлен `SwinContextBlock`;
@@ -40,6 +42,12 @@ Updated: 2026-04-24
   - в начале head над `P4` из слоя `6` добавлен light `SwinContextBlock`;
   - выполняется `Concat(P4, context)` и `Conv1x1`-проекция обратно в fused `P4`;
   - далее в neck используется `fused P4`, а `P5` остаётся штатным.
+- В `models/yolo26n_gated_swin_p4_p5.yaml`:
+  - штатный `YOLO26n` backbone сохранён;
+  - над `P4` и `P5` добавлены отдельные `GatedSwinFusion`;
+  - для `P4` используется gate shape `[1, 128, 1, 1]`;
+  - для `P5` используется gate shape `[1, 256, 1, 1]`;
+  - в neck используются gated `P4/P5`, а `Detect` head остаётся штатным по смыслу.
 - Путь baseline обучения сохранён отдельно и не заменён автоматически: [`scripts/train_baseline.py`](../scripts/train_baseline.py).
 - Зависимости для Swin-пути объявлены в `requirements.txt` (`torch`, `torchvision`, `timm`, `ultralytics`).
 - Entry points [`scripts/validate.py`](../scripts/validate.py) и [`scripts/predict_sample.py`](../scripts/predict_sample.py):
@@ -57,6 +65,8 @@ Updated: 2026-04-24
   - сборку baseline и context-модели;
   - корректный `forward`;
   - shape-контракт `feature_backbone -> feature_context -> feature_fused` для `P5` и `P4-light` вариантов;
+  - shape-контракт `P4_cnn -> P4_out` и `P5_cnn -> P5_out` для `gated_p4_p5`;
+  - `alpha_mean` для `P4/P5` gated modules;
   - различие по числу параметров baseline vs modified.
 
 ### Inferred
@@ -64,9 +74,10 @@ Updated: 2026-04-24
 - Для стабильного обучения критична согласованность `out_indices`/каналов между Swin-based backbone, neck и `Detect` слоями в YAML.
 - `models/yolo26n_swin_context_p5.yaml` на текущем шаге привязан к `YOLO26n` scale (`n`) и не является универсальным шаблоном для `s/m/l/x`.
 - `models/yolo26n_swin_context_p4_light.yaml` так же привязан к `YOLO26n` scale (`n`) и не является универсальным шаблоном для `s/m/l/x`.
+- `models/yolo26n_gated_swin_p4_p5.yaml` так же привязан к `YOLO26n` scale (`n`) и не является универсальным шаблоном для `s/m/l/x`.
 
 ### Not established in repo
-- Нет зафиксированного сравнения метрик baseline vs pure `Swin-T` vs hybrid `CNN+Swin-T` vs `YOLO26n + SwinContextBlock(P5)` vs `YOLO26n + light SwinContextBlock(P4)` на одном и том же датасете.
+- Нет зафиксированного сравнения метрик baseline vs pure `Swin-T` vs hybrid `CNN+Swin-T` vs `YOLO26n + SwinContextBlock(P5)` vs `YOLO26n + light SwinContextBlock(P4)` vs `YOLO26n + GatedSwinFusion(P4, P5)` на одном и том же датасете.
 - Нет CI/авто-проверки, которая бы гарантировала, что подмена `TorchVision` не ломается при обновлениях `ultralytics`.
 - Для context-path пока не зафиксирована отдельная стратегия экспорт/ONNX-совместимости.
 
@@ -84,4 +95,9 @@ Updated: 2026-04-24
   - `P4_fused` возвращается к каналам штатного `YOLO26n P4`;
   - в neck вместо исходного `P4` используется `P4_fused`;
   - baseline `YOLO26n` backbone/neck/head не заменяются.
+- Для `YOLO26n + GatedSwinFusion(P4, P5)` обязателен контракт:
+  - `P4_out` и `P5_out` сохраняют shape исходных `P4/P5`;
+  - `alpha4` shape `[1, 128, 1, 1]`, `alpha5` shape `[1, 256, 1, 1]`;
+  - gate является channel-wise и обучаемым;
+  - `Detect` head остаётся штатным по смыслу.
 - Артефакты обучения сохраняются в стандартной структуре `runs/<name>/weights/{best,last}.pt`.

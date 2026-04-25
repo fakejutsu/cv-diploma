@@ -6,8 +6,10 @@ def register_context_modules() -> None:
 
     from ultralytics.nn import tasks
 
+    from .gated_swin_fusion import GatedSwinFusion
     from .swin_context_block import SwinContextBlock
 
+    tasks.GatedSwinFusion = GatedSwinFusion
     tasks.SwinContextBlock = SwinContextBlock
 
 

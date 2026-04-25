@@ -31,6 +31,29 @@ _BASELINE_TO_CONTEXT_LAYER_REMAP = {
     23: 26,
 }
 
+_BASELINE_TO_GATED_P4_P5_LAYER_REMAP = {
+    **{index: index for index in range(0, 11)},
+    11: 13,
+    12: 14,
+    13: 15,
+    14: 16,
+    15: 17,
+    16: 18,
+    17: 19,
+    18: 20,
+    19: 21,
+    20: 22,
+    21: 23,
+    22: 24,
+    23: 25,
+}
+
+_WEIGHT_TRANSFER_STRATEGIES = {
+    "exact": None,
+    "context_shift3": _BASELINE_TO_CONTEXT_LAYER_REMAP,
+    "gated_shift2": _BASELINE_TO_GATED_P4_P5_LAYER_REMAP,
+}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train YOLO26n with a Swin-style context block on P5.")
@@ -141,25 +164,25 @@ def _load_pretrained_weights(model: Any, weights_path: Path) -> None:
     source_state_dict = pretrained_model.float().state_dict()
     target_state_dict = model.model.state_dict()
 
-    exact_weights, exact_counts = _collect_compatible_weights(source_state_dict, target_state_dict)
-    remapped_weights, remapped_counts = _collect_compatible_weights(
-        source_state_dict,
-        target_state_dict,
-        index_remap=_BASELINE_TO_CONTEXT_LAYER_REMAP,
-    )
+    selected_weights: dict[str, Any] = {}
+    selected_counts: Counter[int] = Counter()
+    strategy = "exact"
 
-    if len(remapped_weights) > len(exact_weights):
-        selected_weights = remapped_weights
-        selected_counts = remapped_counts
-        strategy = "remapped"
-    else:
-        selected_weights = exact_weights
-        selected_counts = exact_counts
-        strategy = "exact"
+    for strategy_name, index_remap in _WEIGHT_TRANSFER_STRATEGIES.items():
+        candidate_weights, candidate_counts = _collect_compatible_weights(
+            source_state_dict,
+            target_state_dict,
+            index_remap=index_remap,
+        )
+        if len(candidate_weights) > len(selected_weights):
+            selected_weights = candidate_weights
+            selected_counts = candidate_counts
+            strategy = strategy_name
 
     model.model.load_state_dict(selected_weights, strict=False)
 
-    detect_matches = selected_counts.get(26, 0)
+    detect_layer = model.model.model[-1]
+    detect_matches = selected_counts.get(int(getattr(detect_layer, "i", len(model.model.model) - 1)), 0)
     print(
         f"Pretrained weight transfer: strategy={strategy}, "
         f"matched={len(selected_weights)}/{len(target_state_dict)}, detect_matches={detect_matches}"
