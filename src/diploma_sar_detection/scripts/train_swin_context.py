@@ -10,7 +10,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from custom_models import register_context_modules
+from custom_models import GatedSwinFusion, register_context_modules
 from utils import configure_ultralytics, resolve_device, resolve_save_dir, set_seed
 
 
@@ -105,6 +105,20 @@ def parse_args() -> argparse.Namespace:
         default=1.0,
         help="Fraction of the training dataset to use for a smoke test or quick run.",
     )
+    parser.add_argument(
+        "--swin-p4-weights",
+        "--swin_p4_weights",
+        dest="swin_p4_weights",
+        type=Path,
+        help="Optional checkpoint with pretrained SwinContextBlock for the P4 gated branch.",
+    )
+    parser.add_argument(
+        "--swin-p5-weights",
+        "--swin_p5_weights",
+        dest="swin_p5_weights",
+        type=Path,
+        help="Optional checkpoint with pretrained SwinContextBlock for the P5 gated branch.",
+    )
     return parser.parse_args()
 
 
@@ -189,11 +203,141 @@ def _load_pretrained_weights(model: Any, weights_path: Path) -> None:
     )
 
 
+def _load_checkpoint_state_dict(weights_path: Path) -> dict[str, Any]:
+    from ultralytics.nn.tasks import torch_safe_load
+
+    checkpoint, _ = torch_safe_load(str(weights_path))
+    pretrained_model = checkpoint.get("ema") or checkpoint["model"]
+    return pretrained_model.float().state_dict()
+
+
+def _find_gated_modules(model: Any) -> dict[int, GatedSwinFusion]:
+    modules: dict[int, GatedSwinFusion] = {}
+    for layer in model.model.model:
+        if isinstance(layer, GatedSwinFusion):
+            modules[layer.in_channels] = layer
+    return modules
+
+
+def _candidate_prefixes_for_swin_state(state_dict: dict[str, Any]) -> list[str]:
+    candidates = set()
+    for key in state_dict:
+        parts = key.split(".")
+        if len(parts) >= 2 and parts[0] == "model" and parts[1].isdigit():
+            candidates.add(".".join(parts[:2]))
+    return sorted(candidates)
+
+
+def _count_swin_matches(state_dict: dict[str, Any], target_module: GatedSwinFusion, prefix: str) -> tuple[int, int]:
+    own_state = target_module.swin.state_dict()
+    matched = 0
+    dotted_prefix = prefix.rstrip(".") + "."
+    for key, value in state_dict.items():
+        if not key.startswith(dotted_prefix):
+            continue
+        new_key = key[len(dotted_prefix) :]
+        own_value = own_state.get(new_key)
+        if own_value is not None and own_value.shape == getattr(value, "shape", None):
+            matched += 1
+    return matched, len(own_state)
+
+
+def _best_swin_prefix(state_dict: dict[str, Any], target_module: GatedSwinFusion) -> tuple[str | None, int, int]:
+    best_prefix: str | None = None
+    best_matched = 0
+    target_total = len(target_module.swin.state_dict())
+    for prefix in _candidate_prefixes_for_swin_state(state_dict):
+        matched, _ = _count_swin_matches(state_dict, target_module, prefix)
+        if matched > best_matched:
+            best_prefix = prefix
+            best_matched = matched
+    if best_prefix is None:
+        return None, 0, target_total
+    return best_prefix, best_matched, target_total
+
+
+def load_pretrained_gated_swin_weights(
+    model: Any,
+    p4_ckpt: Path | None = None,
+    p5_ckpt: Path | None = None,
+) -> dict[str, Any]:
+    gated_modules = _find_gated_modules(model)
+    p4_gate = gated_modules.get(128)
+    p5_gate = gated_modules.get(256)
+
+    result: dict[str, Any] = {
+        "p4_source": None,
+        "p5_source": None,
+        "p4_prefix": None,
+        "p5_prefix": None,
+        "p4_matched": 0,
+        "p5_matched": 0,
+        "p4_total": len(p4_gate.swin.state_dict()) if p4_gate else 0,
+        "p5_total": len(p5_gate.swin.state_dict()) if p5_gate else 0,
+        "alpha_mean_p4_before": p4_gate.alpha_mean if p4_gate else None,
+        "alpha_mean_p5_before": p5_gate.alpha_mean if p5_gate else None,
+        "alpha_mean_p4_after": p4_gate.alpha_mean if p4_gate else None,
+        "alpha_mean_p5_after": p5_gate.alpha_mean if p5_gate else None,
+        "trainable": bool(
+            (p4_gate is None or all(param.requires_grad for param in p4_gate.parameters()))
+            and (p5_gate is None or all(param.requires_grad for param in p5_gate.parameters()))
+        ),
+    }
+
+    if p4_ckpt is not None and p4_gate is not None:
+        source_state = _load_checkpoint_state_dict(p4_ckpt)
+        result["p4_source"] = str(p4_ckpt)
+        prefix, matched, total = _best_swin_prefix(source_state, p4_gate)
+        if prefix is not None:
+            matched, total = p4_gate.load_swin_weights(source_state, prefix)
+            result["p4_prefix"] = prefix
+            result["p4_matched"] = matched
+            result["p4_total"] = total
+
+    if p5_ckpt is not None and p5_gate is not None:
+        source_state = _load_checkpoint_state_dict(p5_ckpt)
+        result["p5_source"] = str(p5_ckpt)
+        prefix, matched, total = _best_swin_prefix(source_state, p5_gate)
+        if prefix is not None:
+            matched, total = p5_gate.load_swin_weights(source_state, prefix)
+            result["p5_prefix"] = prefix
+            result["p5_matched"] = matched
+            result["p5_total"] = total
+
+    result["alpha_mean_p4_after"] = p4_gate.alpha_mean if p4_gate else None
+    result["alpha_mean_p5_after"] = p5_gate.alpha_mean if p5_gate else None
+    result["trainable"] = bool(
+        (p4_gate is None or all(param.requires_grad for param in p4_gate.parameters()))
+        and (p5_gate is None or all(param.requires_grad for param in p5_gate.parameters()))
+    )
+    return result
+
+
+def _log_composite_swin_warmstart(result: dict[str, Any]) -> None:
+    print("Composite Swin warm-start:")
+    print(f"P4 source: {result['p4_source'] or 'not provided'}")
+    if result["p4_source"]:
+        print(f"P4 prefix: {result['p4_prefix']}")
+        print(f"P4 matched: {result['p4_matched']}/{result['p4_total']} tensors")
+    print(f"P5 source: {result['p5_source'] or 'not provided'}")
+    if result["p5_source"]:
+        print(f"P5 prefix: {result['p5_prefix']}")
+        print(f"P5 matched: {result['p5_matched']}/{result['p5_total']} tensors")
+    print(
+        "raw_alpha before/after: "
+        f"p4={result['alpha_mean_p4_before']} -> {result['alpha_mean_p4_after']}, "
+        f"p5={result['alpha_mean_p5_before']} -> {result['alpha_mean_p5_after']}"
+    )
+    print(f"Swin modules remain trainable: {result['trainable']}")
+
+
 def main() -> int:
     args = parse_args()
     data_path = args.data.expanduser().resolve()
     model_path = Path(args.model).expanduser()
     weights_path = args.weights.expanduser().resolve() if args.weights else None
+    swin_p4_weights = args.swin_p4_weights.expanduser().resolve() if args.swin_p4_weights else None
+    swin_p5_weights = args.swin_p5_weights.expanduser().resolve() if args.swin_p5_weights else None
 
     if not data_path.is_file():
         print(f"Dataset config not found: {data_path}", file=sys.stderr)
@@ -203,6 +347,12 @@ def main() -> int:
         return 2
     if weights_path is not None and not weights_path.is_file():
         print(f"Weights checkpoint not found: {weights_path}", file=sys.stderr)
+        return 2
+    if swin_p4_weights is not None and not swin_p4_weights.is_file():
+        print(f"P4 Swin checkpoint not found: {swin_p4_weights}", file=sys.stderr)
+        return 2
+    if swin_p5_weights is not None and not swin_p5_weights.is_file():
+        print(f"P5 Swin checkpoint not found: {swin_p5_weights}", file=sys.stderr)
         return 2
 
     device = resolve_device(args.device)
@@ -215,6 +365,8 @@ def main() -> int:
         "data": str(data_path),
         "model": str(model_path),
         "weights": str(weights_path) if weights_path else None,
+        "swin_p4_weights": str(swin_p4_weights) if swin_p4_weights else None,
+        "swin_p5_weights": str(swin_p5_weights) if swin_p5_weights else None,
         "epochs": args.epochs,
         "imgsz": args.imgsz,
         "batch": args.batch,
@@ -242,6 +394,13 @@ def main() -> int:
         model = YOLO(str(model_path))
         if weights_path is not None:
             _load_pretrained_weights(model, weights_path)
+        if swin_p4_weights is not None or swin_p5_weights is not None:
+            composite_result = load_pretrained_gated_swin_weights(
+                model,
+                p4_ckpt=swin_p4_weights,
+                p5_ckpt=swin_p5_weights,
+            )
+            _log_composite_swin_warmstart(composite_result)
 
         train_kwargs: dict[str, Any] = {
             "data": str(data_path),

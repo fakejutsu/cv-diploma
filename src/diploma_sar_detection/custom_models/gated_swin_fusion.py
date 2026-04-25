@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections import OrderedDict
+
 import torch
 from torch import Tensor, nn
 
@@ -39,6 +41,35 @@ class GatedSwinFusion(nn.Module):
     @property
     def alpha_mean(self) -> float:
         return float(torch.sigmoid(self.raw_alpha.detach()).mean().item())
+
+    def load_swin_weights(self, state_dict: dict[str, Tensor], prefix: str | None = None) -> tuple[int, int]:
+        """
+        Load only the inner SwinContextBlock weights from a checkpoint state dict.
+
+        Parameters are matched by name and shape after removing the optional prefix.
+        Non-matching tensors are skipped silently.
+        """
+
+        own_state = self.swin.state_dict()
+        matched_state: OrderedDict[str, Tensor] = OrderedDict()
+
+        normalized_prefix = prefix.rstrip(".") if prefix else None
+        for key, value in state_dict.items():
+            if normalized_prefix:
+                dotted_prefix = f"{normalized_prefix}."
+                if not key.startswith(dotted_prefix):
+                    continue
+                new_key = key[len(dotted_prefix) :]
+            else:
+                new_key = key
+
+            own_value = own_state.get(new_key)
+            if own_value is None or own_value.shape != value.shape:
+                continue
+            matched_state[new_key] = value
+
+        self.swin.load_state_dict(matched_state, strict=False)
+        return len(matched_state), len(own_state)
 
     def forward(self, x: Tensor) -> Tensor:
         swin = self.swin(x)

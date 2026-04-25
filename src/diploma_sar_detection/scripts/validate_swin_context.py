@@ -13,6 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from custom_models import register_context_modules
 from utils import configure_ultralytics
+from train_swin_context import _load_pretrained_weights, load_pretrained_gated_swin_weights
 
 
 def parse_args() -> argparse.Namespace:
@@ -34,6 +35,20 @@ def parse_args() -> argparse.Namespace:
         help="Expected context variant. Use auto to infer from YAML filename.",
     )
     parser.add_argument("--yolo-config-dir", type=Path, help="Directory for Ultralytics settings and cache files.")
+    parser.add_argument(
+        "--swin-p4-weights",
+        "--swin_p4_weights",
+        dest="swin_p4_weights",
+        type=Path,
+        help="Optional checkpoint with pretrained SwinContextBlock for the P4 gated branch.",
+    )
+    parser.add_argument(
+        "--swin-p5-weights",
+        "--swin_p5_weights",
+        dest="swin_p5_weights",
+        type=Path,
+        help="Optional checkpoint with pretrained SwinContextBlock for the P5 gated branch.",
+    )
     return parser.parse_args()
 
 
@@ -93,8 +108,16 @@ def _print_layer_table(yolo_model: Any) -> None:
 def main() -> int:
     args = parse_args()
     model_yaml_path = args.context_model_yaml.expanduser().resolve()
+    swin_p4_weights = args.swin_p4_weights.expanduser().resolve() if args.swin_p4_weights else None
+    swin_p5_weights = args.swin_p5_weights.expanduser().resolve() if args.swin_p5_weights else None
     if not model_yaml_path.is_file():
         print(f"Context model YAML not found: {model_yaml_path}", file=sys.stderr)
+        return 2
+    if swin_p4_weights is not None and not swin_p4_weights.is_file():
+        print(f"P4 Swin checkpoint not found: {swin_p4_weights}", file=sys.stderr)
+        return 2
+    if swin_p5_weights is not None and not swin_p5_weights.is_file():
+        print(f"P5 Swin checkpoint not found: {swin_p5_weights}", file=sys.stderr)
         return 2
 
     configure_ultralytics(args.yolo_config_dir)
@@ -107,6 +130,16 @@ def main() -> int:
 
         baseline = YOLO(args.baseline_model)
         context = YOLO(str(model_yaml_path))
+        if Path(args.baseline_model).expanduser().is_file():
+            _load_pretrained_weights(context, Path(args.baseline_model).expanduser().resolve())
+
+        composite_result = None
+        if swin_p4_weights is not None or swin_p5_weights is not None:
+            composite_result = load_pretrained_gated_swin_weights(
+                context,
+                p4_ckpt=swin_p4_weights,
+                p5_ckpt=swin_p5_weights,
+            )
 
         sample = torch.randn(1, 3, args.imgsz, args.imgsz)
         captured: dict[str, Any] = {}
@@ -155,6 +188,17 @@ def main() -> int:
             p5_gate = context.model.model[12]
             print(f"alpha_mean_p4: {p4_gate.alpha_mean:.6f}")
             print(f"alpha_mean_p5: {p5_gate.alpha_mean:.6f}")
+            if composite_result is not None:
+                print(
+                    "p4_swin_loaded: "
+                    f"{composite_result['p4_matched']}/{composite_result['p4_total']} "
+                    f"(prefix={composite_result['p4_prefix']})"
+                )
+                print(
+                    "p5_swin_loaded: "
+                    f"{composite_result['p5_matched']}/{composite_result['p5_total']} "
+                    f"(prefix={composite_result['p5_prefix']})"
+                )
         else:
             feature_backbone = captured["feature_backbone"]
             feature_context = captured["feature_context"]
