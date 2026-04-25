@@ -10,6 +10,7 @@ Current templates:
 - `yolo26n_swin_context_p4_light.yaml` — `YOLO26n` with a light `SwinContextBlock` over backbone `P4`, followed by `Concat + Conv1x1` fusion back into the stock neck/head.
 - `yolo26n_gated_swin_p4_p5.yaml` — `YOLO26n` with channel-wise gated `Swin` fusion on both `P4` and `P5`.
 - `yolo26n_gated_swin_p4_p5_pretrained.yaml` — `YOLO26n` with channel-wise gated `Swin` fusion on both `P4` and `P5`, softer `init_alpha=2.0`, and optional pretrained inner-Swin warm-start from prior `P4`/`P5` experiments.
+- `yolo26n_gated_swin_p4_p5_alpha6.yaml` — `YOLO26n` with channel-wise gated `Swin` fusion on both `P4` and `P5`, but with `init_alpha=6.0` for a more conservative random-Swin start near the baseline CNN path.
 
 Important:
 
@@ -19,4 +20,5 @@ Important:
 - `yolo26n_swin_context_p4_light.yaml` is also aligned to the `YOLO26n` scale (`n`) and is not yet a generic template for `s/m/l/x`.
 - `yolo26n_gated_swin_p4_p5.yaml` is also aligned to the `YOLO26n` scale (`n`) and is not yet a generic template for `s/m/l/x`.
 - `yolo26n_gated_swin_p4_p5_pretrained.yaml` is also aligned to the `YOLO26n` scale (`n`) and is not yet a generic template for `s/m/l/x`.
+- `yolo26n_gated_swin_p4_p5_alpha6.yaml` is also aligned to the `YOLO26n` scale (`n`) and is not yet a generic template for `s/m/l/x`.
 - Before long training runs, validate tensor shapes and neck/head wiring with a short smoke test.

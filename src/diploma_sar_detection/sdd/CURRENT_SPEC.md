@@ -10,6 +10,7 @@ Updated: 2026-04-25
 - `YOLO26n + light SwinContextBlock(P4)` как отдельный light context variant;
 - `YOLO26n + GatedSwinFusion(P4, P5)` как channel-wise gated context variant.
 - `YOLO26n + GatedSwinFusion(P4, P5)` с softer gate-start и composite pretrained Swin warm-start.
+- `YOLO26n + GatedSwinFusion(P4, P5)` с conservative gate-start (`init_alpha=6.0`) для random-Swin runs от dataset-pretrained baseline.
 
 ## System State
 
@@ -28,12 +29,14 @@ Updated: 2026-04-25
 - Оба backbone не выполняют принудительный внутренний resize входа; spatial размер задаётся внешним training pipeline (`imgsz`) и сохраняет корректный stride-контракт для `Detect`.
 - В гибридном пути stem не выполняет downsample (stride=1), поэтому `Detect` сохраняет ожидаемые strides `[8,16,32]`.
 - Поддерживаются шесть YAML-шаблонов архитектуры:
+- Поддерживаются семь YAML-шаблонов архитектуры:
   - [`models/yolo26_cnn_swin_t.yaml`](../models/yolo26_cnn_swin_t.yaml) — дефолтный гибридный путь;
   - [`models/yolo26_swin_t.yaml`](../models/yolo26_swin_t.yaml) — legacy pure Swin-T путь;
   - [`models/yolo26n_swin_context_p5.yaml`](../models/yolo26n_swin_context_p5.yaml) — `YOLO26n + SwinContextBlock(P5)` без замены backbone;
   - [`models/yolo26n_swin_context_p4_light.yaml`](../models/yolo26n_swin_context_p4_light.yaml) — `YOLO26n + light SwinContextBlock(P4)` без замены backbone;
   - [`models/yolo26n_gated_swin_p4_p5.yaml`](../models/yolo26n_gated_swin_p4_p5.yaml) — `YOLO26n + GatedSwinFusion(P4, P5)` без замены backbone;
   - [`models/yolo26n_gated_swin_p4_p5_pretrained.yaml`](../models/yolo26n_gated_swin_p4_p5_pretrained.yaml) — `YOLO26n + GatedSwinFusion(P4, P5)` с `init_alpha=2.0` и optional pretrained Swin subweight warm-start.
+  - [`models/yolo26n_gated_swin_p4_p5_alpha6.yaml`](../models/yolo26n_gated_swin_p4_p5_alpha6.yaml) — `YOLO26n + GatedSwinFusion(P4, P5)` с `init_alpha=6.0` для random-Swin запуска от dataset-pretrained baseline.
 - В `models/yolo26n_swin_context_p5.yaml`:
   - штатный `YOLO26n` backbone сохранён;
   - после `P5` добавлен `SwinContextBlock`;
@@ -55,6 +58,10 @@ Updated: 2026-04-25
   - `init_alpha=2.0` задаётся только в YAML, без изменения default внутри `GatedSwinFusion`;
   - `scripts/train_swin_context.py` и `scripts/validate_swin_context.py` поддерживают optional `--swin-p4-weights/--swin-p5-weights`;
   - при их передаче загружаются только inner `swin`-параметры соответствующих `GatedSwinFusion`, без перезаписи `raw_alpha`.
+- В `models/yolo26n_gated_swin_p4_p5_alpha6.yaml`:
+  - wiring совпадает с `models/yolo26n_gated_swin_p4_p5.yaml`;
+  - `init_alpha=6.0` задаётся только в YAML;
+  - сценарий предназначен для запуска от dataset-pretrained baseline checkpoint без pretrained Swin subweights.
 - Путь baseline обучения сохранён отдельно и не заменён автоматически: [`scripts/train_baseline.py`](../scripts/train_baseline.py).
 - Зависимости для Swin-пути объявлены в `requirements.txt` (`torch`, `torchvision`, `timm`, `ultralytics`).
 - Entry points [`scripts/validate.py`](../scripts/validate.py) и [`scripts/predict_sample.py`](../scripts/predict_sample.py):
@@ -93,6 +100,7 @@ Updated: 2026-04-25
 ## Contracts
 - CLI-контракт `scripts/train_swin.py` должен оставаться совместимым с текущими флагами.
 - CLI-контракт `scripts/train_swin_context.py` должен оставаться совместимым с текущими флагами.
+- `scripts/train_swin_context.py` дополнительно поддерживает optional проброс `lr0` и `mosaic` в `ultralytics` train kwargs.
 - Формат датасета и `data/dataset.yaml` не меняется из-за Swin-based интеграции.
 - Для Swin-based путей обязателен контракт выходов в neck/head: `P3/P4/P5` каналы `192/384/768`, `Detect` strides `[8,16,32]`.
 - Для `YOLO26n + SwinContextBlock(P5)` обязателен контракт:

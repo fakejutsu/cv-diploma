@@ -105,6 +105,8 @@ def parse_args() -> argparse.Namespace:
         default=1.0,
         help="Fraction of the training dataset to use for a smoke test or quick run.",
     )
+    parser.add_argument("--lr0", type=float, help="Optional initial learning rate override for Ultralytics train().")
+    parser.add_argument("--mosaic", type=float, help="Optional mosaic augmentation probability override.")
     parser.add_argument(
         "--swin-p4-weights",
         "--swin_p4_weights",
@@ -384,6 +386,8 @@ def main() -> int:
         "exist_ok": args.exist_ok,
         "yolo_config_dir": str(config_dir),
         "fraction": args.fraction,
+        "lr0": args.lr0,
+        "mosaic": args.mosaic,
     }
     _print_run_configuration(run_config)
 
@@ -424,6 +428,10 @@ def main() -> int:
             train_kwargs["optimizer"] = args.optimizer
         if args.amp is not None:
             train_kwargs["amp"] = args.amp
+        if args.lr0 is not None:
+            train_kwargs["lr0"] = args.lr0
+        if args.mosaic is not None:
+            train_kwargs["mosaic"] = args.mosaic
 
         model.train(**train_kwargs)
     except ImportError as exc:
