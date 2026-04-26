@@ -1,6 +1,6 @@
 # CURRENT_SPEC
 
-Updated: 2026-04-25
+Updated: 2026-04-26
 
 ## Scope
 Текущее состояние экспериментальных Swin-based интеграций в training pipeline YOLO26:
@@ -11,6 +11,7 @@ Updated: 2026-04-25
 - `YOLO26n + GatedSwinFusion(P4, P5)` как channel-wise gated context variant.
 - `YOLO26n + GatedSwinFusion(P4, P5)` с softer gate-start и composite pretrained Swin warm-start.
 - `YOLO26n + GatedSwinFusion(P4, P5)` с conservative gate-start (`init_alpha=6.0`) для random-Swin runs от dataset-pretrained baseline.
+- `YOLO26m teacher -> YOLO26n + SwinContextBlock(P5) student` через `P5` feature distillation.
 
 ## System State
 
@@ -37,6 +38,7 @@ Updated: 2026-04-25
   - [`models/yolo26n_gated_swin_p4_p5.yaml`](../models/yolo26n_gated_swin_p4_p5.yaml) — `YOLO26n + GatedSwinFusion(P4, P5)` без замены backbone;
   - [`models/yolo26n_gated_swin_p4_p5_pretrained.yaml`](../models/yolo26n_gated_swin_p4_p5_pretrained.yaml) — `YOLO26n + GatedSwinFusion(P4, P5)` с `init_alpha=2.0` и optional pretrained Swin subweight warm-start.
   - [`models/yolo26n_gated_swin_p4_p5_alpha6.yaml`](../models/yolo26n_gated_swin_p4_p5_alpha6.yaml) — `YOLO26n + GatedSwinFusion(P4, P5)` с `init_alpha=6.0` для random-Swin запуска от dataset-pretrained baseline.
+- Для distillation-пути student использует существующий [`models/yolo26n_swin_context_p5.yaml`](../models/yolo26n_swin_context_p5.yaml), teacher задаётся отдельным checkpoint `YOLO26m`.
 - В `models/yolo26n_swin_context_p5.yaml`:
   - штатный `YOLO26n` backbone сохранён;
   - после `P5` добавлен `SwinContextBlock`;
@@ -62,6 +64,11 @@ Updated: 2026-04-25
   - wiring совпадает с `models/yolo26n_gated_swin_p4_p5.yaml`;
   - `init_alpha=6.0` задаётся только в YAML;
   - сценарий предназначен для запуска от dataset-pretrained baseline checkpoint без pretrained Swin subweights.
+- Для distillation-пути:
+  - teacher `YOLO26m` используется только во время train и не участвует в inference student;
+  - student `YOLO26n + SwinContextBlock(P5)` получает обычный YOLO warm-start из `yolo26n.pt`;
+  - дополнительный loss считается только на `P5` (`teacher layer 10` vs `student layer 13`);
+  - channel alignment выполняется student-side `1x1` adapter `256 -> 512`.
 - Путь baseline обучения сохранён отдельно и не заменён автоматически: [`scripts/train_baseline.py`](../scripts/train_baseline.py).
 - Зависимости для Swin-пути объявлены в `requirements.txt` (`torch`, `torchvision`, `timm`, `ultralytics`).
 - Entry points [`scripts/validate.py`](../scripts/validate.py) и [`scripts/predict_sample.py`](../scripts/predict_sample.py):
@@ -83,6 +90,8 @@ Updated: 2026-04-25
   - `alpha_mean` для `P4/P5` gated modules;
   - optional matched counts для pretrained `P4/P5` Swin subweights;
   - различие по числу параметров baseline vs modified.
+- Добавлен отдельный sanity-check distillation setup:
+  [`scripts/validate_distill_setup.py`](../scripts/validate_distill_setup.py), который подтверждает сборку teacher/student и `P5` shape alignment.
 
 ### Inferred
 - Все Swin-based пути остаются экспериментальными scaffold-режимами, а не полностью верифицированной заменой базового пайплайна для всех сценариев.
@@ -101,6 +110,7 @@ Updated: 2026-04-25
 - CLI-контракт `scripts/train_swin.py` должен оставаться совместимым с текущими флагами.
 - CLI-контракт `scripts/train_swin_context.py` должен оставаться совместимым с текущими флагами.
 - `scripts/train_swin_context.py` дополнительно поддерживает optional проброс `lr0` и `mosaic` в `ultralytics` train kwargs.
+- Добавлен отдельный entrypoint [`scripts/train_distill.py`](../scripts/train_distill.py) для teacher/student distillation.
 - Формат датасета и `data/dataset.yaml` не меняется из-за Swin-based интеграции.
 - Для Swin-based путей обязателен контракт выходов в neck/head: `P3/P4/P5` каналы `192/384/768`, `Detect` strides `[8,16,32]`.
 - Для `YOLO26n + SwinContextBlock(P5)` обязателен контракт:
