@@ -33,16 +33,19 @@
 5. Add `scripts/validate_swin_c2psa_replacement.py`.
 6. Add explicit preferred warm-start strategy `p5_swin_c2psa_exact`.
 7. Add `scripts/train_c2psa_replacement_imitation.py` to pretrain only layer `10` by imitating the original YOLO26n C2PSA output.
+8. Keep the student detector in `eval()` during imitation and switch only the replacement layer to `train()` so frozen BatchNorm buffers in the pretrained detector are not updated.
 
 ## Spec updates
 - Adds `YOLO26n + ResidualSwinC2PSA(P5)` as a direct context-module replacement.
 - Replacement preserves `P5` shape and channels.
 - Detect head remains unchanged.
 - Adds an imitation warm-up script for replacing C2PSA without starting from a randomly behaving main-path module.
+- Imitation warm-up is restricted to replacement-layer parameters and replacement-layer training mode; frozen pretrained detector modules keep eval-mode behavior.
 
 ## Open questions
 - Whether replacing `C2PSA` loses useful pretrained behavior from layer 10 despite near-identity residual init.
 - Whether `beta=0.1` is too conservative.
+- Whether eval-safe imitation can restore validation mAP close to baseline before detection fine-tuning.
 
 ## Next iteration
 - Run pre-transfer validation.

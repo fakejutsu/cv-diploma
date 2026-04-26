@@ -116,6 +116,12 @@ def _checkpoint_payload(model: Any, args: argparse.Namespace, epoch: int, best_l
     }
 
 
+def _train_only_replacement(student: nn.Module, replacement_layer: nn.Module) -> None:
+    """Keep the pretrained detector stable while optimizing only the replacement block."""
+    student.eval()
+    replacement_layer.train()
+
+
 def main() -> int:
     args = parse_args()
     data_path = args.data.expanduser().resolve()
@@ -182,13 +188,13 @@ def main() -> int:
         student_yolo = YOLO(str(student_yaml))
         _load_pretrained_weights(student_yolo, student_weights)
         student = student_yolo.model.to(device)
-        student.train()
 
         for parameter in student.parameters():
             parameter.requires_grad = False
         replacement_layer = student.model[args.student_layer]
         for parameter in replacement_layer.parameters():
             parameter.requires_grad = True
+        _train_only_replacement(student, replacement_layer)
 
         trainable = sum(parameter.numel() for parameter in replacement_layer.parameters() if parameter.requires_grad)
         print(f"Trainable replacement parameters: {trainable:,}")
@@ -206,6 +212,7 @@ def main() -> int:
         student_layer = student.model[args.student_layer]
 
         for epoch in range(args.epochs):
+            _train_only_replacement(student, replacement_layer)
             running_loss = 0.0
             num_batches = 0
             progress = tqdm(dataloader, total=len(dataloader), desc=f"epoch {epoch + 1}/{args.epochs}")
