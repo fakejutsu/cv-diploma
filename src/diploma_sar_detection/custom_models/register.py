@@ -11,6 +11,7 @@ def register_context_modules() -> None:
     from .gated_wavevit_fusion import GatedWaveVitFusion
     from .residual_adaptive_swin_fusion import ResidualAdaptiveSwinFusion
     from .residual_adaptive_wavevit_fusion import ResidualAdaptiveWaveVitFusion
+    from .residual_swin_c2psa import ResidualSwinC2PSA
     from .swin_context_block import SwinContextBlock
     from .wavevit_context_block import WaveVitContextBlock
 
@@ -19,6 +20,7 @@ def register_context_modules() -> None:
     tasks.GatedWaveVitFusion = GatedWaveVitFusion
     tasks.ResidualAdaptiveSwinFusion = ResidualAdaptiveSwinFusion
     tasks.ResidualAdaptiveWaveVitFusion = ResidualAdaptiveWaveVitFusion
+    tasks.ResidualSwinC2PSA = ResidualSwinC2PSA
     tasks.SwinContextBlock = SwinContextBlock
     tasks.WaveVitContextBlock = WaveVitContextBlock
 

@@ -17,6 +17,7 @@ Updated: 2026-04-26
 - `YOLO26n + ResidualAdaptiveSwinFusion(P4, P5)` как residual/adaptive Swin correction variant без замены штатного backbone.
 - `YOLO26m teacher -> lightweight Swin-based student` через `P5` feature distillation.
 - Teacher-guided multi-feature distillation для residual/adaptive Swin student через `P4/P5`.
+- `YOLO26n + ResidualSwinC2PSA(P5)` как direct replacement штатного `C2PSA(P5)` context module.
 
 ## System State
 
@@ -37,6 +38,7 @@ Updated: 2026-04-26
 - `GatedWaveVitFusion` реализован как channel-wise gated fusion между исходным CNN feature map и его WaveViT-style контекстом, использует обучаемый `raw_alpha` shape `[1, C, 1, 1]`: [`custom_models/gated_wavevit_fusion.py`](../custom_models/gated_wavevit_fusion.py).
 - `ResidualAdaptiveWaveVitFusion` реализован как residual correction поверх исходного CNN feature map: `out = x + beta * gate * delta`, где `gate` зависит от channel context и spatial/detail signals: [`custom_models/residual_adaptive_wavevit_fusion.py`](../custom_models/residual_adaptive_wavevit_fusion.py).
 - `ResidualAdaptiveSwinFusion` реализован как residual correction поверх исходного CNN feature map: `out = x + beta * gate * delta`, где context branch использует `SwinContextBlock`: [`custom_models/residual_adaptive_swin_fusion.py`](../custom_models/residual_adaptive_swin_fusion.py).
+- `ResidualSwinC2PSA` реализован как shape-preserving residual Swin replacement для `C2PSA(P5)`: [`custom_models/residual_swin_c2psa.py`](../custom_models/residual_swin_c2psa.py).
 - Оба backbone не выполняют принудительный внутренний resize входа; spatial размер задаётся внешним training pipeline (`imgsz`) и сохраняет корректный stride-контракт для `Detect`.
 - В гибридном пути stem не выполняет downsample (stride=1), поэтому `Detect` сохраняет ожидаемые strides `[8,16,32]`.
 - Поддерживаются одиннадцать YAML-шаблонов архитектуры:

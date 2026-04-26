@@ -16,6 +16,7 @@ from custom_models import (
     GatedWaveVitFusion,
     ResidualAdaptiveSwinFusion,
     ResidualAdaptiveWaveVitFusion,
+    ResidualSwinC2PSA,
     register_context_modules,
 )
 from utils import configure_ultralytics, resolve_device, resolve_save_dir, set_seed
@@ -60,6 +61,7 @@ _BASELINE_TO_GATED_P4_P5_LAYER_REMAP = {
 
 _WEIGHT_TRANSFER_STRATEGIES = {
     "exact": None,
+    "p5_swin_c2psa_exact": None,
     "context_shift3": _BASELINE_TO_CONTEXT_LAYER_REMAP,
     "gated_shift2": _BASELINE_TO_GATED_P4_P5_LAYER_REMAP,
     "adaptive_gated_shift2": _BASELINE_TO_GATED_P4_P5_LAYER_REMAP,
@@ -217,6 +219,8 @@ def _collect_compatible_weights(
 
 def _preferred_weight_transfer_strategy(model: Any) -> str | None:
     for layer in model.model.model:
+        if isinstance(layer, ResidualSwinC2PSA):
+            return "p5_swin_c2psa_exact"
         if isinstance(layer, ResidualAdaptiveSwinFusion):
             return "residual_adaptive_swin_shift2"
         if isinstance(layer, ResidualAdaptiveWaveVitFusion):

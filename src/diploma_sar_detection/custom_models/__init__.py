@@ -7,6 +7,7 @@ from .hybrid_cnn_swin_t_backbone import HybridCnnSwinTBackbone
 from .register import register_backbone, register_cnn_swin_t_backbone, register_context_modules, register_swin_t_backbone
 from .residual_adaptive_swin_fusion import ResidualAdaptiveSwinFusion
 from .residual_adaptive_wavevit_fusion import ResidualAdaptiveWaveVitFusion
+from .residual_swin_c2psa import ResidualSwinC2PSA
 from .swin_context_block import SwinContextBlock
 from .swin_t_backbone import SwinTBackbone
 from .wavevit_context_block import WaveVitContextBlock
@@ -22,6 +23,7 @@ __all__ = [
     "GatedWaveVitFusion",
     "ResidualAdaptiveSwinFusion",
     "ResidualAdaptiveWaveVitFusion",
+    "ResidualSwinC2PSA",
     "AdaptiveDetailGatedSwinFusion",
     "register_backbone",
     "register_context_modules",
