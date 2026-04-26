@@ -10,7 +10,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from custom_models import register_context_modules
+from custom_models import register_backbone, register_context_modules
 from custom_models.distill_swin_p5_model import DistillSwinP5DetectionModel
 from utils import configure_ultralytics, resolve_device, resolve_save_dir, set_seed
 
@@ -43,6 +43,12 @@ def parse_args() -> argparse.Namespace:
         "--student-model",
         default="models/yolo26n_swin_context_p5.yaml",
         help="Path to the student model YAML.",
+    )
+    parser.add_argument(
+        "--student-backbone-variant",
+        default="auto",
+        choices=("auto", "none", "swin_t", "cnn_swin_t"),
+        help="Optional backbone registration variant for TorchVision-based Swin students.",
     )
     parser.add_argument(
         "--student-weights",
@@ -100,6 +106,20 @@ def parse_args() -> argparse.Namespace:
         default="smoothl1",
         help="Feature distillation loss type.",
     )
+    parser.add_argument("--student-distill-layer", type=int, default=13, help="Student feature layer index to distill.")
+    parser.add_argument(
+        "--student-distill-channels",
+        type=int,
+        default=256,
+        help="Student feature channels before the distillation adapter.",
+    )
+    parser.add_argument("--teacher-distill-layer", type=int, default=10, help="Teacher feature layer index to distill.")
+    parser.add_argument(
+        "--teacher-distill-channels",
+        type=int,
+        default=512,
+        help="Teacher feature channels used as the distillation target.",
+    )
     return parser.parse_args()
 
 
@@ -115,6 +135,20 @@ def _resolve_best_checkpoint(trainer: Any, fallback_save_dir: Path) -> Path:
     if best:
         return Path(best)
     return fallback_save_dir / "weights" / "best.pt"
+
+
+def _resolve_student_backbone_variant(arg_variant: str, model_path: Path) -> str | None:
+    if arg_variant != "auto":
+        return None if arg_variant == "none" else arg_variant
+
+    model_name = model_path.name.lower()
+    if "swin_context" in model_name or "gated" in model_name:
+        return None
+    if "cnn_swin" in model_name:
+        return "cnn_swin_t"
+    if "swin_t" in model_name or "swint" in model_name or model_name == "swin_clear_backbone.pt":
+        return "swin_t"
+    return None
 
 
 def load_pretrained_student_weights(model: DistillSwinP5DetectionModel, weights_path: Path) -> tuple[str, int, int]:
@@ -153,6 +187,10 @@ class DistillDetectionTrainer(DetectionTrainer):
         student_weights_path: Path | None,
         distill_weight: float,
         distill_loss: str,
+        student_distill_layer: int,
+        student_distill_channels: int,
+        teacher_distill_layer: int,
+        teacher_distill_channels: int,
         *args: Any,
         **kwargs: Any,
     ) -> None:
@@ -160,6 +198,10 @@ class DistillDetectionTrainer(DetectionTrainer):
         self.student_weights_path = student_weights_path
         self.distill_weight = float(distill_weight)
         self.distill_loss = distill_loss
+        self.student_distill_layer = int(student_distill_layer)
+        self.student_distill_channels = int(student_distill_channels)
+        self.teacher_distill_layer = int(teacher_distill_layer)
+        self.teacher_distill_channels = int(teacher_distill_channels)
         super().__init__(*args, **kwargs)
 
     def get_model(self, cfg: str | None = None, weights: str | None = None, verbose: bool = True):
@@ -168,6 +210,10 @@ class DistillDetectionTrainer(DetectionTrainer):
             nc=self.data["nc"],
             ch=self.data["channels"],
             verbose=verbose,
+            distill_student_layer=self.student_distill_layer,
+            distill_student_channels=self.student_distill_channels,
+            distill_teacher_layer=self.teacher_distill_layer,
+            distill_teacher_channels=self.teacher_distill_channels,
             distill_weight=self.distill_weight,
             distill_loss=self.distill_loss,
         )
@@ -203,6 +249,7 @@ def main() -> int:
     teacher_model_path = args.teacher_model.expanduser().resolve()
     student_model_path = Path(args.student_model).expanduser()
     student_weights_path = args.student_weights.expanduser().resolve() if args.student_weights else None
+    student_backbone_variant = _resolve_student_backbone_variant(args.student_backbone_variant, student_model_path)
 
     if not data_path.is_file():
         print(f"Dataset config not found: {data_path}", file=sys.stderr)
@@ -228,6 +275,7 @@ def main() -> int:
         "teacher_model": str(teacher_model_path),
         "student_model": str(student_model_path),
         "student_weights": str(student_weights_path) if student_weights_path else None,
+        "student_backbone_variant": student_backbone_variant,
         "epochs": args.epochs,
         "imgsz": args.imgsz,
         "batch": args.batch,
@@ -248,11 +296,17 @@ def main() -> int:
         "mosaic": args.mosaic,
         "distill_weight": args.distill_weight,
         "distill_loss": args.distill_loss,
+        "student_distill_layer": args.student_distill_layer,
+        "student_distill_channels": args.student_distill_channels,
+        "teacher_distill_layer": args.teacher_distill_layer,
+        "teacher_distill_channels": args.teacher_distill_channels,
     }
     _print_run_configuration(run_config)
 
     try:
         register_context_modules()
+        if student_backbone_variant is not None:
+            register_backbone(student_backbone_variant)
         overrides: dict[str, Any] = {
             "model": str(student_model_path),
             "data": str(data_path),
@@ -285,6 +339,10 @@ def main() -> int:
             student_weights_path=student_weights_path,
             distill_weight=args.distill_weight,
             distill_loss=args.distill_loss,
+            student_distill_layer=args.student_distill_layer,
+            student_distill_channels=args.student_distill_channels,
+            teacher_distill_layer=args.teacher_distill_layer,
+            teacher_distill_channels=args.teacher_distill_channels,
             overrides=overrides,
         )
         trainer.train()

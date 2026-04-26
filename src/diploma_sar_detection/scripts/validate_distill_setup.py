@@ -10,7 +10,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from custom_models import register_context_modules
+from custom_models import register_backbone, register_context_modules
 from custom_models.distill_swin_p5_model import DistillSwinP5DetectionModel
 from train_distill import load_pretrained_student_weights
 from utils import configure_ultralytics
@@ -20,12 +20,36 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Sanity-check teacher/student P5 distillation wiring.")
     parser.add_argument("--teacher-model", type=Path, default=Path("best_yolo26m.pt"))
     parser.add_argument("--student-model", type=Path, default=Path("models/yolo26n_swin_context_p5.yaml"))
+    parser.add_argument(
+        "--student-backbone-variant",
+        default="auto",
+        choices=("auto", "none", "swin_t", "cnn_swin_t"),
+        help="Optional backbone registration variant for TorchVision-based Swin students.",
+    )
     parser.add_argument("--student-weights", type=Path, default=Path("yolo26n.pt"))
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--distill-weight", type=float, default=0.1)
     parser.add_argument("--distill-loss", choices=("l1", "mse", "smoothl1"), default="smoothl1")
+    parser.add_argument("--student-distill-layer", type=int, default=13)
+    parser.add_argument("--student-distill-channels", type=int, default=256)
+    parser.add_argument("--teacher-distill-layer", type=int, default=10)
+    parser.add_argument("--teacher-distill-channels", type=int, default=512)
     parser.add_argument("--yolo-config-dir", type=Path)
     return parser.parse_args()
+
+
+def _resolve_student_backbone_variant(arg_variant: str, model_path: Path) -> str | None:
+    if arg_variant != "auto":
+        return None if arg_variant == "none" else arg_variant
+
+    model_name = model_path.name.lower()
+    if "swin_context" in model_name or "gated" in model_name:
+        return None
+    if "cnn_swin" in model_name:
+        return "cnn_swin_t"
+    if "swin_t" in model_name or "swint" in model_name or model_name == "swin_clear_backbone.pt":
+        return "swin_t"
+    return None
 
 
 def _count_parameters(module: torch.nn.Module) -> int:
@@ -37,6 +61,7 @@ def main() -> int:
     teacher_path = args.teacher_model.expanduser().resolve()
     student_path = args.student_model.expanduser().resolve()
     student_weights = args.student_weights.expanduser().resolve()
+    student_backbone_variant = _resolve_student_backbone_variant(args.student_backbone_variant, student_path)
     if not teacher_path.is_file():
         print(f"Teacher checkpoint not found: {teacher_path}", file=sys.stderr)
         return 2
@@ -49,6 +74,8 @@ def main() -> int:
 
     configure_ultralytics(args.yolo_config_dir)
     register_context_modules()
+    if student_backbone_variant is not None:
+        register_backbone(student_backbone_variant)
 
     from ultralytics import YOLO
 
@@ -58,6 +85,10 @@ def main() -> int:
         nc=5,
         ch=3,
         verbose=False,
+        distill_student_layer=args.student_distill_layer,
+        distill_student_channels=args.student_distill_channels,
+        distill_teacher_layer=args.teacher_distill_layer,
+        distill_teacher_channels=args.teacher_distill_channels,
         distill_weight=args.distill_weight,
         distill_loss=args.distill_loss,
     )
@@ -78,6 +109,7 @@ def main() -> int:
     print(f"Teacher model: {teacher_path}")
     print(f"Student model: {student_path}")
     print(f"Student weights: {student_weights}")
+    print(f"Student backbone variant: {student_backbone_variant}")
     print(f"Teacher output type: {type(baseline_output).__name__}")
     print(f"Student output type: {type(student_output).__name__}")
     print(f"Teacher parameters: {_count_parameters(teacher):,}")
