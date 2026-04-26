@@ -11,7 +11,7 @@ Updated: 2026-04-26
 - `YOLO26n + GatedSwinFusion(P4, P5)` как channel-wise gated context variant.
 - `YOLO26n + GatedSwinFusion(P4, P5)` с softer gate-start и composite pretrained Swin warm-start.
 - `YOLO26n + GatedSwinFusion(P4, P5)` с conservative gate-start (`init_alpha=6.0`) для random-Swin runs от dataset-pretrained baseline.
-- `YOLO26m teacher -> YOLO26n + SwinContextBlock(P5) student` через `P5` feature distillation.
+- `YOLO26m teacher -> lightweight Swin-based student` через `P5` feature distillation.
 
 ## System State
 
@@ -38,7 +38,9 @@ Updated: 2026-04-26
   - [`models/yolo26n_gated_swin_p4_p5.yaml`](../models/yolo26n_gated_swin_p4_p5.yaml) — `YOLO26n + GatedSwinFusion(P4, P5)` без замены backbone;
   - [`models/yolo26n_gated_swin_p4_p5_pretrained.yaml`](../models/yolo26n_gated_swin_p4_p5_pretrained.yaml) — `YOLO26n + GatedSwinFusion(P4, P5)` с `init_alpha=2.0` и optional pretrained Swin subweight warm-start.
   - [`models/yolo26n_gated_swin_p4_p5_alpha6.yaml`](../models/yolo26n_gated_swin_p4_p5_alpha6.yaml) — `YOLO26n + GatedSwinFusion(P4, P5)` с `init_alpha=6.0` для random-Swin запуска от dataset-pretrained baseline.
-- Для distillation-пути student использует существующий [`models/yolo26n_swin_context_p5.yaml`](../models/yolo26n_swin_context_p5.yaml), teacher задаётся отдельным checkpoint `YOLO26m`.
+- Для distillation-пути teacher задаётся отдельным checkpoint `YOLO26m`, а student может быть:
+  - существующий [`models/yolo26n_swin_context_p5.yaml`](../models/yolo26n_swin_context_p5.yaml);
+  - pure Swin student на [`models/yolo26_swin_t.yaml`](../models/yolo26_swin_t.yaml) при явной регистрации `--student-backbone-variant swin_t`.
 - В `models/yolo26n_swin_context_p5.yaml`:
   - штатный `YOLO26n` backbone сохранён;
   - после `P5` добавлен `SwinContextBlock`;
@@ -66,9 +68,10 @@ Updated: 2026-04-26
   - сценарий предназначен для запуска от dataset-pretrained baseline checkpoint без pretrained Swin subweights.
 - Для distillation-пути:
   - teacher `YOLO26m` используется только во время train и не участвует в inference student;
-  - student `YOLO26n + SwinContextBlock(P5)` получает обычный YOLO warm-start из `yolo26n.pt`;
-  - дополнительный loss считается только на `P5` (`teacher layer 10` vs `student layer 13`);
-  - channel alignment выполняется student-side `1x1` adapter `256 -> 512`.
+  - student warm-start задаётся отдельным checkpoint через `--student-weights`;
+  - дополнительный loss считается только на `P5`;
+  - конкретный student `P5 layer/channels` задаются CLI-параметрами и не захардкожены только под один student;
+  - channel alignment выполняется student-side `1x1` adapter.
 - Путь baseline обучения сохранён отдельно и не заменён автоматически: [`scripts/train_baseline.py`](../scripts/train_baseline.py).
 - Зависимости для Swin-пути объявлены в `requirements.txt` (`torch`, `torchvision`, `timm`, `ultralytics`).
 - Entry points [`scripts/validate.py`](../scripts/validate.py) и [`scripts/predict_sample.py`](../scripts/predict_sample.py):

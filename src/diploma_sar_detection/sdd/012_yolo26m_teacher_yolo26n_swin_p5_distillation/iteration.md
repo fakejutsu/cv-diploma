@@ -21,6 +21,18 @@
 - Для выравнивания каналов используется student-side `1x1` adapter `256 -> 512`.
 - Первая версия использует только feature distillation (`smoothl1`) без `P4`, без bbox/logit distill.
 
+## Extension
+- `train_distill.py` и `validate_distill_setup.py` обобщены для альтернативных student-архитектур через CLI-параметры:
+  - `--student-backbone-variant`
+  - `--student-distill-layer`
+  - `--student-distill-channels`
+  - `--teacher-distill-layer`
+  - `--teacher-distill-channels`
+- Для pure `Swin-T + neck` student подтверждён рабочий distillation contract:
+  - student `P5` = `layer 15`
+  - student `P5 channels` = `768`
+  - teacher `P5` остаётся `layer 10`, `512 channels`.
+
 ## Spec updates
 - Добавлен новый custom model class для train-only distillation:
   [`custom_models/distill_swin_p5_model.py`](../../custom_models/distill_swin_p5_model.py)
