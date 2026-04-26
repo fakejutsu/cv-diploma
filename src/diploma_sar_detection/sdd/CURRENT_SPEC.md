@@ -168,6 +168,7 @@ Updated: 2026-04-26
   - `--distill-mode single` для legacy one-feature distillation;
   - `--distill-mode multi` для multi-feature distillation через [`custom_models/distill_multi_feature_model.py`](../custom_models/distill_multi_feature_model.py).
 - Multi-feature distillation принимает списки student/teacher layers/channels и создаёт отдельные `1x1` adapters для каждого feature pair.
+- [`scripts/train_c2psa_replacement_imitation.py`](../scripts/train_c2psa_replacement_imitation.py) обучает только layer `10` replacement копировать output исходного `C2PSA(P5)` из teacher `YOLO26n`.
 - Формат датасета и `data/dataset.yaml` не меняется из-за Swin-based интеграции.
 - Для Swin-based путей обязателен контракт выходов в neck/head: `P3/P4/P5` каналы `192/384/768`, `Detect` strides `[8,16,32]`.
 - Для `YOLO26n + SwinContextBlock(P5)` обязателен контракт:
