@@ -11,6 +11,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from custom_models import register_backbone, register_context_modules
+from custom_models.distill_multi_feature_model import DistillMultiFeatureDetectionModel
 from custom_models.distill_swin_p5_model import DistillSwinP5DetectionModel
 from utils import configure_ultralytics, resolve_device, resolve_save_dir, set_seed
 
@@ -95,6 +96,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lr0", type=float, help="Optional initial learning rate override.")
     parser.add_argument("--mosaic", type=float, help="Optional mosaic augmentation probability override.")
     parser.add_argument(
+        "--freeze-layers",
+        nargs="+",
+        help="Layer indices or inclusive ranges to freeze before training, e.g. `0-10` or `0-10 13-25`.",
+    )
+    parser.add_argument(
+        "--distill-mode",
+        choices=("single", "multi"),
+        default="single",
+        help="Use single feature distillation or multi-feature distillation.",
+    )
+    parser.add_argument(
         "--distill-weight",
         type=float,
         default=0.1,
@@ -119,6 +131,26 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=512,
         help="Teacher feature channels used as the distillation target.",
+    )
+    parser.add_argument(
+        "--student-distill-layers",
+        default="11,12",
+        help="Comma-separated student layer indices for multi-feature distillation.",
+    )
+    parser.add_argument(
+        "--student-distill-channel-list",
+        default="128,256",
+        help="Comma-separated student feature channels for multi-feature distillation.",
+    )
+    parser.add_argument(
+        "--teacher-distill-layers",
+        default="6,10",
+        help="Comma-separated teacher layer indices for multi-feature distillation.",
+    )
+    parser.add_argument(
+        "--teacher-distill-channel-list",
+        default="512,512",
+        help="Comma-separated teacher feature channels for multi-feature distillation.",
     )
     return parser.parse_args()
 
@@ -149,6 +181,33 @@ def _resolve_student_backbone_variant(arg_variant: str, model_path: Path) -> str
     if "swin_t" in model_name or "swint" in model_name or model_name == "swin_clear_backbone.pt":
         return "swin_t"
     return None
+
+
+def _parse_int_csv(value: str) -> tuple[int, ...]:
+    return tuple(int(part.strip()) for part in value.split(",") if part.strip())
+
+
+def _parse_freeze_layers(values: list[str] | None) -> list[int] | None:
+    if not values:
+        return None
+
+    layers: set[int] = set()
+    for value in values:
+        normalized = value.strip()
+        if not normalized:
+            continue
+        if "-" in normalized:
+            start_text, end_text = normalized.split("-", 1)
+            start = int(start_text)
+            end = int(end_text)
+            if start > end:
+                raise ValueError(f"Invalid freeze layer range `{value}`: start must be <= end.")
+            layers.update(range(start, end + 1))
+        else:
+            layers.add(int(normalized))
+    if any(layer < 0 for layer in layers):
+        raise ValueError("Freeze layer indices must be non-negative.")
+    return sorted(layers)
 
 
 def load_pretrained_student_weights(model: DistillSwinP5DetectionModel, weights_path: Path) -> tuple[str, int, int]:
@@ -243,6 +302,42 @@ class DistillDetectionTrainer(DetectionTrainer):
         return super().get_validator()
 
 
+class DistillMultiFeatureDetectionTrainer(DistillDetectionTrainer):
+    def __init__(
+        self,
+        student_distill_layers: tuple[int, ...],
+        student_distill_channel_list: tuple[int, ...],
+        teacher_distill_layers: tuple[int, ...],
+        teacher_distill_channel_list: tuple[int, ...],
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
+        self.student_distill_layers_multi = student_distill_layers
+        self.student_distill_channel_list_multi = student_distill_channel_list
+        self.teacher_distill_layers_multi = teacher_distill_layers
+        self.teacher_distill_channel_list_multi = teacher_distill_channel_list
+        super().__init__(*args, **kwargs)
+
+    def get_model(self, cfg: str | None = None, weights: str | None = None, verbose: bool = True):
+        model = DistillMultiFeatureDetectionModel(
+            cfg=cfg,
+            nc=self.data["nc"],
+            ch=self.data["channels"],
+            verbose=verbose,
+            distill_student_layers=self.student_distill_layers_multi,
+            distill_student_channels=self.student_distill_channel_list_multi,
+            distill_teacher_layers=self.teacher_distill_layers_multi,
+            distill_teacher_channels=self.teacher_distill_channel_list_multi,
+            distill_weight=self.distill_weight,
+            distill_loss=self.distill_loss,
+        )
+        if self.student_weights_path:
+            load_pretrained_student_weights(model, self.student_weights_path)
+        elif weights:
+            model.load(weights)
+        return model
+
+
 def main() -> int:
     args = parse_args()
     data_path = args.data.expanduser().resolve()
@@ -250,6 +345,15 @@ def main() -> int:
     student_model_path = Path(args.student_model).expanduser()
     student_weights_path = args.student_weights.expanduser().resolve() if args.student_weights else None
     student_backbone_variant = _resolve_student_backbone_variant(args.student_backbone_variant, student_model_path)
+    try:
+        freeze_layers = _parse_freeze_layers(args.freeze_layers)
+        student_distill_layers_multi = _parse_int_csv(args.student_distill_layers)
+        student_distill_channel_list_multi = _parse_int_csv(args.student_distill_channel_list)
+        teacher_distill_layers_multi = _parse_int_csv(args.teacher_distill_layers)
+        teacher_distill_channel_list_multi = _parse_int_csv(args.teacher_distill_channel_list)
+    except ValueError as exc:
+        print(f"Invalid distillation/freeze argument: {exc}", file=sys.stderr)
+        return 2
 
     if not data_path.is_file():
         print(f"Dataset config not found: {data_path}", file=sys.stderr)
@@ -294,12 +398,18 @@ def main() -> int:
         "fraction": args.fraction,
         "lr0": args.lr0,
         "mosaic": args.mosaic,
+        "freeze_layers": freeze_layers,
+        "distill_mode": args.distill_mode,
         "distill_weight": args.distill_weight,
         "distill_loss": args.distill_loss,
         "student_distill_layer": args.student_distill_layer,
         "student_distill_channels": args.student_distill_channels,
         "teacher_distill_layer": args.teacher_distill_layer,
         "teacher_distill_channels": args.teacher_distill_channels,
+        "student_distill_layers": student_distill_layers_multi,
+        "student_distill_channel_list": student_distill_channel_list_multi,
+        "teacher_distill_layers": teacher_distill_layers_multi,
+        "teacher_distill_channel_list": teacher_distill_channel_list_multi,
     }
     _print_run_configuration(run_config)
 
@@ -333,18 +443,33 @@ def main() -> int:
             overrides["lr0"] = args.lr0
         if args.mosaic is not None:
             overrides["mosaic"] = args.mosaic
+        if freeze_layers is not None:
+            overrides["freeze"] = freeze_layers
 
-        trainer = DistillDetectionTrainer(
-            teacher_model_path=teacher_model_path,
-            student_weights_path=student_weights_path,
-            distill_weight=args.distill_weight,
-            distill_loss=args.distill_loss,
-            student_distill_layer=args.student_distill_layer,
-            student_distill_channels=args.student_distill_channels,
-            teacher_distill_layer=args.teacher_distill_layer,
-            teacher_distill_channels=args.teacher_distill_channels,
-            overrides=overrides,
+        trainer_cls: type[DistillDetectionTrainer] = (
+            DistillMultiFeatureDetectionTrainer if args.distill_mode == "multi" else DistillDetectionTrainer
         )
+        trainer_kwargs: dict[str, Any] = {
+            "teacher_model_path": teacher_model_path,
+            "student_weights_path": student_weights_path,
+            "distill_weight": args.distill_weight,
+            "distill_loss": args.distill_loss,
+            "student_distill_layer": args.student_distill_layer,
+            "student_distill_channels": args.student_distill_channels,
+            "teacher_distill_layer": args.teacher_distill_layer,
+            "teacher_distill_channels": args.teacher_distill_channels,
+            "overrides": overrides,
+        }
+        if args.distill_mode == "multi":
+            trainer_kwargs = {
+                "student_distill_layers": student_distill_layers_multi,
+                "student_distill_channel_list": student_distill_channel_list_multi,
+                "teacher_distill_layers": teacher_distill_layers_multi,
+                "teacher_distill_channel_list": teacher_distill_channel_list_multi,
+                **trainer_kwargs,
+            }
+
+        trainer = trainer_cls(**trainer_kwargs)
         trainer.train()
     except Exception as exc:
         print(f"Distillation training failed: {exc}", file=sys.stderr)

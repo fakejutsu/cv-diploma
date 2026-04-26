@@ -16,6 +16,7 @@ Updated: 2026-04-26
 - `YOLO26n + ResidualAdaptiveWaveVitFusion(P3, P4)` как residual/adaptive WaveViT-style correction variant без замены штатного backbone.
 - `YOLO26n + ResidualAdaptiveSwinFusion(P4, P5)` как residual/adaptive Swin correction variant без замены штатного backbone.
 - `YOLO26m teacher -> lightweight Swin-based student` через `P5` feature distillation.
+- Teacher-guided multi-feature distillation для residual/adaptive Swin student через `P4/P5`.
 
 ## System State
 
@@ -161,6 +162,10 @@ Updated: 2026-04-26
 - CLI-контракт `scripts/train_swin_context.py` должен оставаться совместимым с текущими флагами.
 - `scripts/train_swin_context.py` дополнительно поддерживает optional проброс `lr0`, `mosaic` и `freeze` layer indices/ranges в `ultralytics` train kwargs.
 - Добавлен отдельный entrypoint [`scripts/train_distill.py`](../scripts/train_distill.py) для teacher/student distillation.
+- `scripts/train_distill.py` поддерживает два режима:
+  - `--distill-mode single` для legacy one-feature distillation;
+  - `--distill-mode multi` для multi-feature distillation через [`custom_models/distill_multi_feature_model.py`](../custom_models/distill_multi_feature_model.py).
+- Multi-feature distillation принимает списки student/teacher layers/channels и создаёт отдельные `1x1` adapters для каждого feature pair.
 - Формат датасета и `data/dataset.yaml` не меняется из-за Swin-based интеграции.
 - Для Swin-based путей обязателен контракт выходов в neck/head: `P3/P4/P5` каналы `192/384/768`, `Detect` strides `[8,16,32]`.
 - Для `YOLO26n + SwinContextBlock(P5)` обязателен контракт:

@@ -1,4 +1,5 @@
 from .adaptive_detail_gated_swin_fusion import AdaptiveDetailGatedSwinFusion
+from .distill_multi_feature_model import DistillMultiFeatureDetectionModel
 from .distill_swin_p5_model import DistillSwinP5DetectionModel
 from .gated_swin_fusion import GatedSwinFusion
 from .gated_wavevit_fusion import GatedWaveVitFusion
@@ -15,6 +16,7 @@ __all__ = [
     "HybridCnnSwinTBackbone",
     "SwinContextBlock",
     "WaveVitContextBlock",
+    "DistillMultiFeatureDetectionModel",
     "DistillSwinP5DetectionModel",
     "GatedSwinFusion",
     "GatedWaveVitFusion",
