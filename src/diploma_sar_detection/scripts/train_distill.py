@@ -21,7 +21,6 @@ from train_swin_context import (
     _load_checkpoint_state_dict,
 )
 from ultralytics.models.yolo.detect.train import DetectionTrainer
-from ultralytics.utils import YAML
 
 
 _WEIGHT_TRANSFER_STRATEGIES = {
@@ -162,12 +161,6 @@ class DistillDetectionTrainer(DetectionTrainer):
         self.distill_weight = float(distill_weight)
         self.distill_loss = distill_loss
         super().__init__(*args, **kwargs)
-        self.args.distill_weight = self.distill_weight
-        self.args.distill_loss = self.distill_loss
-        if self.save_dir.exists():
-            args_path = self.save_dir / "args.yaml"
-            args_dict = vars(self.args).copy()
-            YAML.save(args_path, args_dict)
 
     def get_model(self, cfg: str | None = None, weights: str | None = None, verbose: bool = True):
         model = DistillSwinP5DetectionModel(
