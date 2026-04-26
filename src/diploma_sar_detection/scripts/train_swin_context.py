@@ -226,6 +226,12 @@ def _load_pretrained_weights(model: Any, weights_path: Path) -> None:
         f"matched={len(selected_weights)}/{len(target_state_dict)}, detect_matches={detect_matches}"
     )
 
+    # Ultralytics rebuilds YAML-created models inside model.train() unless `ckpt`
+    # is truthy. Mark the current in-memory model as checkpoint-backed so the
+    # transferred weights are reused by the trainer instead of being discarded.
+    model.ckpt = {"model": model.model, "epoch": -1, "optimizer": None}
+    model.ckpt_path = str(weights_path)
+
 
 def _load_checkpoint_state_dict(weights_path: Path) -> dict[str, Any]:
     from ultralytics.nn.tasks import torch_safe_load
