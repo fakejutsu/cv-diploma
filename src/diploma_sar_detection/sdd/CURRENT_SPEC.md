@@ -150,7 +150,7 @@ Updated: 2026-04-26
 ## Contracts
 - CLI-контракт `scripts/train_swin.py` должен оставаться совместимым с текущими флагами.
 - CLI-контракт `scripts/train_swin_context.py` должен оставаться совместимым с текущими флагами.
-- `scripts/train_swin_context.py` дополнительно поддерживает optional проброс `lr0` и `mosaic` в `ultralytics` train kwargs.
+- `scripts/train_swin_context.py` дополнительно поддерживает optional проброс `lr0`, `mosaic` и `freeze` layer indices/ranges в `ultralytics` train kwargs.
 - Добавлен отдельный entrypoint [`scripts/train_distill.py`](../scripts/train_distill.py) для teacher/student distillation.
 - Формат датасета и `data/dataset.yaml` не меняется из-за Swin-based интеграции.
 - Для Swin-based путей обязателен контракт выходов в neck/head: `P3/P4/P5` каналы `192/384/768`, `Detect` strides `[8,16,32]`.

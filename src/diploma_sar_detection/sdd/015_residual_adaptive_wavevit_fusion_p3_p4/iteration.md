@@ -43,6 +43,7 @@
 5. Initialize final `delta_proj` conv with small weights instead of exact zeros, so the residual branch starts near identity but still allows gate gradients.
 6. Create `models/yolo26n_residual_adaptive_wavevit_p3_p4.yaml`.
 7. Reuse `scripts/validate_wavevit_context.py` for both static and residual/adaptive WaveViT variants.
+8. Add `scripts/train_swin_context.py --freeze-layers`, so experiments can freeze backbone layers `0-10` while training WaveViT inserts plus neck/head layers `11-25`.
 
 ## Spec updates
 - Adds a new context-enhancement variant:
@@ -51,6 +52,7 @@
 - `P3_out` and `P4_out` preserve source shapes.
 - WaveViT influence is residual, not direct feature replacement.
 - Validator reports prior alpha, effective gate statistics, `delta_abs_mean`, and `beta`.
+- Context training supports selective layer freezing via `--freeze-layers`, including inclusive ranges like `0-10`.
 
 ## Open questions
 - Will residual/adaptive WaveViT correction produce measurable gain over `best_yolo26n.pt`.

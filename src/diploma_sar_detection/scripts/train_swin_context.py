@@ -120,6 +120,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lr0", type=float, help="Optional initial learning rate override for Ultralytics train().")
     parser.add_argument("--mosaic", type=float, help="Optional mosaic augmentation probability override.")
     parser.add_argument(
+        "--freeze-layers",
+        nargs="+",
+        help="Layer indices or inclusive ranges to freeze before training, e.g. `0-10` or `0 1 2`.",
+    )
+    parser.add_argument(
         "--swin-p4-weights",
         "--swin_p4_weights",
         dest="swin_p4_weights",
@@ -141,6 +146,30 @@ def _print_run_configuration(config: dict[str, Any]) -> None:
     print("---------------------------------")
     for key, value in config.items():
         print(f"{key}: {value}")
+
+
+def _parse_freeze_layers(values: list[str] | None) -> list[int] | None:
+    if not values:
+        return None
+
+    layers: set[int] = set()
+    for value in values:
+        normalized = value.strip()
+        if not normalized:
+            continue
+        if "-" in normalized:
+            start_text, end_text = normalized.split("-", 1)
+            start = int(start_text)
+            end = int(end_text)
+            if start > end:
+                raise ValueError(f"Invalid freeze layer range `{value}`: start must be <= end.")
+            layers.update(range(start, end + 1))
+        else:
+            layers.add(int(normalized))
+
+    if any(layer < 0 for layer in layers):
+        raise ValueError("Freeze layer indices must be non-negative.")
+    return sorted(layers)
 
 
 def _resolve_best_checkpoint(model: Any, fallback_save_dir: Path) -> Path:
@@ -377,6 +406,11 @@ def main() -> int:
     weights_path = args.weights.expanduser().resolve() if args.weights else None
     swin_p4_weights = args.swin_p4_weights.expanduser().resolve() if args.swin_p4_weights else None
     swin_p5_weights = args.swin_p5_weights.expanduser().resolve() if args.swin_p5_weights else None
+    try:
+        freeze_layers = _parse_freeze_layers(args.freeze_layers)
+    except ValueError as exc:
+        print(f"Invalid --freeze-layers value: {exc}", file=sys.stderr)
+        return 2
 
     if not data_path.is_file():
         print(f"Dataset config not found: {data_path}", file=sys.stderr)
@@ -425,6 +459,7 @@ def main() -> int:
         "fraction": args.fraction,
         "lr0": args.lr0,
         "mosaic": args.mosaic,
+        "freeze_layers": freeze_layers,
     }
     _print_run_configuration(run_config)
 
@@ -469,6 +504,8 @@ def main() -> int:
             train_kwargs["lr0"] = args.lr0
         if args.mosaic is not None:
             train_kwargs["mosaic"] = args.mosaic
+        if freeze_layers is not None:
+            train_kwargs["freeze"] = freeze_layers
 
         model.train(**train_kwargs)
     except ImportError as exc:
