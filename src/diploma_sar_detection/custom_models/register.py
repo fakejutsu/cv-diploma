@@ -8,11 +8,15 @@ def register_context_modules() -> None:
 
     from .adaptive_detail_gated_swin_fusion import AdaptiveDetailGatedSwinFusion
     from .gated_swin_fusion import GatedSwinFusion
+    from .gated_wavevit_fusion import GatedWaveVitFusion
     from .swin_context_block import SwinContextBlock
+    from .wavevit_context_block import WaveVitContextBlock
 
     tasks.AdaptiveDetailGatedSwinFusion = AdaptiveDetailGatedSwinFusion
     tasks.GatedSwinFusion = GatedSwinFusion
+    tasks.GatedWaveVitFusion = GatedWaveVitFusion
     tasks.SwinContextBlock = SwinContextBlock
+    tasks.WaveVitContextBlock = WaveVitContextBlock
 
 
 def register_backbone(variant: str = "cnn_swin_t") -> None:
