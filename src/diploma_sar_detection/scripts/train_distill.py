@@ -180,7 +180,6 @@ class DistillDetectionTrainer(DetectionTrainer):
     def _setup_train(self):
         super()._setup_train()
         from ultralytics import YOLO
-        from ultralytics.nn.tasks import attempt_load_weights
         from ultralytics.utils.torch_utils import unwrap_model
 
         teacher_yolo = YOLO(str(self.teacher_model_path))
