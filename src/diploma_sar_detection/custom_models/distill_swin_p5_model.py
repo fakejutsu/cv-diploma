@@ -95,11 +95,14 @@ class DistillSwinP5DetectionModel(DetectionModel):
             raise RuntimeError("Distillation teacher is not configured.")
 
         teacher.eval()
+        teacher_dtype = next(teacher.parameters()).dtype
+        teacher_input = x.to(device=next(teacher.parameters()).device, dtype=teacher_dtype)
         with torch.no_grad():
-            _, feature = self._capture_layer_output(
-                teacher.model[self.distill_teacher_layer],
-                lambda: teacher.predict(x),
-            )
+            with torch.amp.autocast(device_type=teacher_input.device.type, enabled=False):
+                _, feature = self._capture_layer_output(
+                    teacher.model[self.distill_teacher_layer],
+                    lambda: teacher.predict(teacher_input),
+                )
         return feature.detach()
 
     def _extract_student_feature(self, x: Tensor, preds: Any | None = None) -> tuple[Any, Tensor]:
