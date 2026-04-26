@@ -11,7 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from custom_models import GatedWaveVitFusion, register_context_modules
+from custom_models import GatedWaveVitFusion, ResidualAdaptiveWaveVitFusion, register_context_modules
 from utils import configure_ultralytics
 
 
@@ -48,10 +48,16 @@ def _print_layer_table(yolo_model: Any) -> None:
         print(f"{index:2d} | from={str(layer.f):<10} | type={layer.type}")
 
 
-def _print_gate_stats(name: str, gate: GatedWaveVitFusion) -> None:
+def _print_gate_stats(name: str, gate: GatedWaveVitFusion | ResidualAdaptiveWaveVitFusion) -> None:
     print(f"alpha_mean_{name}: {gate.alpha_mean:.6f}")
     print(f"alpha_min_{name}: {gate.alpha_min:.6f}")
     print(f"alpha_max_{name}: {gate.alpha_max:.6f}")
+    if hasattr(gate, "gate_mean") and hasattr(gate, "delta_abs_mean"):
+        print(f"gate_mean_{name}: {gate.gate_mean:.6f}")
+        print(f"gate_min_{name}: {gate.gate_min:.6f}")
+        print(f"gate_max_{name}: {gate.gate_max:.6f}")
+        print(f"delta_abs_mean_{name}: {gate.delta_abs_mean:.6f}")
+        print(f"beta_{name}: {float(gate.beta.detach().cpu().item()):.6f}")
 
 
 def _extract_detect_input_channels(detect_layer: Any) -> list[int]:
@@ -130,8 +136,9 @@ def main() -> int:
 
         p3_gate = model.model.model[11]
         p4_gate = model.model.model[12]
-        if not isinstance(p3_gate, GatedWaveVitFusion) or not isinstance(p4_gate, GatedWaveVitFusion):
-            raise RuntimeError("Expected GatedWaveVitFusion modules at layers 11 and 12.")
+        expected_types = (GatedWaveVitFusion, ResidualAdaptiveWaveVitFusion)
+        if not isinstance(p3_gate, expected_types) or not isinstance(p4_gate, expected_types):
+            raise RuntimeError("Expected WaveViT fusion modules at layers 11 and 12.")
         _print_gate_stats("p3", p3_gate)
         _print_gate_stats("p4", p4_gate)
 

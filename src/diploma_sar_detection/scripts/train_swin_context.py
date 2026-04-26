@@ -10,7 +10,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from custom_models import AdaptiveDetailGatedSwinFusion, GatedSwinFusion, GatedWaveVitFusion, register_context_modules
+from custom_models import (
+    AdaptiveDetailGatedSwinFusion,
+    GatedSwinFusion,
+    GatedWaveVitFusion,
+    ResidualAdaptiveWaveVitFusion,
+    register_context_modules,
+)
 from utils import configure_ultralytics, resolve_device, resolve_save_dir, set_seed
 
 
@@ -57,6 +63,7 @@ _WEIGHT_TRANSFER_STRATEGIES = {
     "gated_shift2": _BASELINE_TO_GATED_P4_P5_LAYER_REMAP,
     "adaptive_gated_shift2": _BASELINE_TO_GATED_P4_P5_LAYER_REMAP,
     "wavevit_p3_p4_shift2": _BASELINE_TO_GATED_P4_P5_LAYER_REMAP,
+    "residual_adaptive_wavevit_p3_p4_shift2": _BASELINE_TO_GATED_P4_P5_LAYER_REMAP,
 }
 
 
@@ -179,6 +186,8 @@ def _collect_compatible_weights(
 
 def _preferred_weight_transfer_strategy(model: Any) -> str | None:
     for layer in model.model.model:
+        if isinstance(layer, ResidualAdaptiveWaveVitFusion):
+            return "residual_adaptive_wavevit_p3_p4_shift2"
         if isinstance(layer, GatedWaveVitFusion):
             return "wavevit_p3_p4_shift2"
         if isinstance(layer, AdaptiveDetailGatedSwinFusion):

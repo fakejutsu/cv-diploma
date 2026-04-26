@@ -13,6 +13,7 @@ Updated: 2026-04-26
 - `YOLO26n + GatedSwinFusion(P4, P5)` с conservative gate-start (`init_alpha=6.0`) для random-Swin runs от dataset-pretrained baseline.
 - `YOLO26n + AdaptiveDetailGatedSwinFusion(P4, P5)` как detail-aware adaptive fusion variant без замены штатного backbone.
 - `YOLO26n + GatedWaveVitFusion(P3, P4)` как WaveViT-style wavelet-attention context variant без замены штатного backbone.
+- `YOLO26n + ResidualAdaptiveWaveVitFusion(P3, P4)` как residual/adaptive WaveViT-style correction variant без замены штатного backbone.
 - `YOLO26m teacher -> lightweight Swin-based student` через `P5` feature distillation.
 
 ## System State
@@ -32,9 +33,10 @@ Updated: 2026-04-26
 - `AdaptiveDetailGatedSwinFusion` реализован как вход-зависимый fusion между исходным CNN feature map и его Swin-enhanced контекстом, использует `raw_alpha` prior, channel gate, spatial gate и detail-aware bias: [`custom_models/adaptive_detail_gated_swin_fusion.py`](../custom_models/adaptive_detail_gated_swin_fusion.py).
 - `WaveVitContextBlock` реализован как shape-preserving WaveViT-style context enhancer поверх YOLO feature map, использует фиксированный Haar DWT/IDWT и attention с wavelet key/value context: [`custom_models/wavevit_context_block.py`](../custom_models/wavevit_context_block.py).
 - `GatedWaveVitFusion` реализован как channel-wise gated fusion между исходным CNN feature map и его WaveViT-style контекстом, использует обучаемый `raw_alpha` shape `[1, C, 1, 1]`: [`custom_models/gated_wavevit_fusion.py`](../custom_models/gated_wavevit_fusion.py).
+- `ResidualAdaptiveWaveVitFusion` реализован как residual correction поверх исходного CNN feature map: `out = x + beta * gate * delta`, где `gate` зависит от channel context и spatial/detail signals: [`custom_models/residual_adaptive_wavevit_fusion.py`](../custom_models/residual_adaptive_wavevit_fusion.py).
 - Оба backbone не выполняют принудительный внутренний resize входа; spatial размер задаётся внешним training pipeline (`imgsz`) и сохраняет корректный stride-контракт для `Detect`.
 - В гибридном пути stem не выполняет downsample (stride=1), поэтому `Detect` сохраняет ожидаемые strides `[8,16,32]`.
-- Поддерживаются девять YAML-шаблонов архитектуры:
+- Поддерживаются десять YAML-шаблонов архитектуры:
   - [`models/yolo26_cnn_swin_t.yaml`](../models/yolo26_cnn_swin_t.yaml) — дефолтный гибридный путь;
   - [`models/yolo26_swin_t.yaml`](../models/yolo26_swin_t.yaml) — legacy pure Swin-T путь;
   - [`models/yolo26n_swin_context_p5.yaml`](../models/yolo26n_swin_context_p5.yaml) — `YOLO26n + SwinContextBlock(P5)` без замены backbone;
@@ -44,6 +46,7 @@ Updated: 2026-04-26
   - [`models/yolo26n_gated_swin_p4_p5_alpha6.yaml`](../models/yolo26n_gated_swin_p4_p5_alpha6.yaml) — `YOLO26n + GatedSwinFusion(P4, P5)` с `init_alpha=6.0` для random-Swin запуска от dataset-pretrained baseline.
   - [`models/yolo26n_adaptive_detail_gated_swin_p4_p5.yaml`](../models/yolo26n_adaptive_detail_gated_swin_p4_p5.yaml) — `YOLO26n + AdaptiveDetailGatedSwinFusion(P4, P5)` с input-adaptive channel/spatial/detail gate.
   - [`models/yolo26n_gated_wavevit_p3_p4.yaml`](../models/yolo26n_gated_wavevit_p3_p4.yaml) — `YOLO26n + GatedWaveVitFusion(P3, P4)` с wavelet-attention context на small-object уровнях.
+  - [`models/yolo26n_residual_adaptive_wavevit_p3_p4.yaml`](../models/yolo26n_residual_adaptive_wavevit_p3_p4.yaml) — `YOLO26n + ResidualAdaptiveWaveVitFusion(P3, P4)` с малой adaptive residual WaveViT-поправкой.
 - Для distillation-пути teacher задаётся отдельным checkpoint `YOLO26m`, а student может быть:
   - существующий [`models/yolo26n_swin_context_p5.yaml`](../models/yolo26n_swin_context_p5.yaml);
   - pure Swin student на [`models/yolo26_swin_t.yaml`](../models/yolo26_swin_t.yaml) при явной регистрации `--student-backbone-variant swin_t`.
@@ -84,6 +87,13 @@ Updated: 2026-04-26
   - для `P4` используется gate shape `[1, 128, 1, 1]`;
   - `P5` остаётся штатным;
   - в neck используются gated `P3/P4`, а `Detect` head остаётся штатным по смыслу.
+- В `models/yolo26n_residual_adaptive_wavevit_p3_p4.yaml`:
+  - wiring совпадает с `models/yolo26n_gated_wavevit_p3_p4.yaml`;
+  - `P3` и `P4` проходят через отдельные `ResidualAdaptiveWaveVitFusion`;
+  - baseline CNN feature остаётся identity path;
+  - WaveViT branch добавляет residual delta через channel/spatial adaptive gate;
+  - `P5` остаётся штатным;
+  - `Detect` head остаётся штатным по смыслу.
 - Для distillation-пути:
   - teacher `YOLO26m` используется только во время train и не участвует в inference student;
   - student warm-start задаётся отдельным checkpoint через `--student-weights`;
@@ -114,9 +124,10 @@ Updated: 2026-04-26
   - различие по числу параметров baseline vs modified.
 - Добавлен отдельный sanity-check WaveViT-context setup:
   [`scripts/validate_wavevit_context.py`](../scripts/validate_wavevit_context.py), который подтверждает для dummy input:
-  - сборку `YOLO26n + GatedWaveVitFusion(P3, P4)`;
+  - сборку `YOLO26n + GatedWaveVitFusion(P3, P4)` и `YOLO26n + ResidualAdaptiveWaveVitFusion(P3, P4)`;
   - shape-контракт `P3_cnn -> P3_out` и `P4_cnn -> P4_out`;
   - `alpha_mean/min/max` для `P3/P4` gated modules;
+  - для residual/adaptive variant дополнительно `gate_mean/min/max`, `delta_abs_mean` и `beta`;
   - `Detect` strides `[8, 16, 32]` и входные каналы `[64, 128, 256]`.
 - Добавлен отдельный sanity-check distillation setup:
   [`scripts/validate_distill_setup.py`](../scripts/validate_distill_setup.py), который подтверждает сборку teacher/student и `P5` shape alignment.
@@ -129,9 +140,10 @@ Updated: 2026-04-26
 - `models/yolo26n_gated_swin_p4_p5.yaml` так же привязан к `YOLO26n` scale (`n`) и не является универсальным шаблоном для `s/m/l/x`.
 - `models/yolo26n_gated_swin_p4_p5_pretrained.yaml` так же привязан к `YOLO26n` scale (`n`) и не является универсальным шаблоном для `s/m/l/x`.
 - `models/yolo26n_gated_wavevit_p3_p4.yaml` так же привязан к текущему `YOLO26n` layer/channel layout и не является универсальным шаблоном для `s/m/l/x`.
+- `models/yolo26n_residual_adaptive_wavevit_p3_p4.yaml` так же привязан к текущему `YOLO26n` layer/channel layout и не является универсальным шаблоном для `s/m/l/x`.
 
 ### Not established in repo
-- Нет зафиксированного сравнения метрик baseline vs pure `Swin-T` vs hybrid `CNN+Swin-T` vs `YOLO26n + SwinContextBlock(P5)` vs `YOLO26n + light SwinContextBlock(P4)` vs `YOLO26n + GatedSwinFusion(P4, P5)` vs `YOLO26n + GatedWaveVitFusion(P3, P4)` на одном и том же датасете.
+- Нет зафиксированного сравнения метрик baseline vs pure `Swin-T` vs hybrid `CNN+Swin-T` vs `YOLO26n + SwinContextBlock(P5)` vs `YOLO26n + light SwinContextBlock(P4)` vs `YOLO26n + GatedSwinFusion(P4, P5)` vs `YOLO26n + GatedWaveVitFusion(P3, P4)` vs `YOLO26n + ResidualAdaptiveWaveVitFusion(P3, P4)` на одном и том же датасете.
 - Нет CI/авто-проверки, которая бы гарантировала, что подмена `TorchVision` не ломается при обновлениях `ultralytics`.
 - Для context-path пока не зафиксирована отдельная стратегия экспорт/ONNX-совместимости.
 
@@ -166,6 +178,12 @@ Updated: 2026-04-26
   - `P3_out` и `P4_out` сохраняют shape исходных `P3/P4`;
   - `alpha3` shape `[1, 128, 1, 1]`, `alpha4` shape `[1, 128, 1, 1]`;
   - gate является channel-wise и обучаемым;
+  - `P5` остаётся штатным;
+  - `Detect` head остаётся штатным по смыслу со strides `[8, 16, 32]`.
+- Для `YOLO26n + ResidualAdaptiveWaveVitFusion(P3, P4)` обязателен контракт:
+  - `P3_out` и `P4_out` сохраняют shape исходных `P3/P4`;
+  - residual branch имеет форму `out = x + beta * gate * delta`;
+  - `gate` зависит от global channel context и local spatial/detail context;
   - `P5` остаётся штатным;
   - `Detect` head остаётся штатным по смыслу со strides `[8, 16, 32]`.
 - Артефакты обучения сохраняются в стандартной структуре `runs/<name>/weights/{best,last}.pt`.
