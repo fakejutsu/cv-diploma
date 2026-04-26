@@ -10,8 +10,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from custom_models import GatedSwinFusion, register_context_modules
+from custom_models import AdaptiveDetailGatedSwinFusion, GatedSwinFusion, register_context_modules
 from utils import configure_ultralytics, resolve_device, resolve_save_dir, set_seed
+
+
+FusionModule = GatedSwinFusion | AdaptiveDetailGatedSwinFusion
 
 
 _BASELINE_TO_CONTEXT_LAYER_REMAP = {
@@ -52,6 +55,7 @@ _WEIGHT_TRANSFER_STRATEGIES = {
     "exact": None,
     "context_shift3": _BASELINE_TO_CONTEXT_LAYER_REMAP,
     "gated_shift2": _BASELINE_TO_GATED_P4_P5_LAYER_REMAP,
+    "adaptive_gated_shift2": _BASELINE_TO_GATED_P4_P5_LAYER_REMAP,
 }
 
 
@@ -172,6 +176,13 @@ def _collect_compatible_weights(
     return compatible, counts
 
 
+def _preferred_weight_transfer_strategy(model: Any) -> str | None:
+    for layer in model.model.model:
+        if isinstance(layer, AdaptiveDetailGatedSwinFusion):
+            return "adaptive_gated_shift2"
+    return None
+
+
 def _load_pretrained_weights(model: Any, weights_path: Path) -> None:
     from ultralytics.nn.tasks import torch_safe_load
 
@@ -183,6 +194,7 @@ def _load_pretrained_weights(model: Any, weights_path: Path) -> None:
     selected_weights: dict[str, Any] = {}
     selected_counts: Counter[int] = Counter()
     strategy = "exact"
+    preferred_strategy = _preferred_weight_transfer_strategy(model)
 
     for strategy_name, index_remap in _WEIGHT_TRANSFER_STRATEGIES.items():
         candidate_weights, candidate_counts = _collect_compatible_weights(
@@ -190,7 +202,14 @@ def _load_pretrained_weights(model: Any, weights_path: Path) -> None:
             target_state_dict,
             index_remap=index_remap,
         )
-        if len(candidate_weights) > len(selected_weights):
+        is_better = len(candidate_weights) > len(selected_weights)
+        is_preferred_tie = (
+            preferred_strategy is not None
+            and strategy_name == preferred_strategy
+            and len(candidate_weights) == len(selected_weights)
+            and strategy != preferred_strategy
+        )
+        if is_better or is_preferred_tie:
             selected_weights = candidate_weights
             selected_counts = candidate_counts
             strategy = strategy_name
@@ -213,10 +232,10 @@ def _load_checkpoint_state_dict(weights_path: Path) -> dict[str, Any]:
     return pretrained_model.float().state_dict()
 
 
-def _find_gated_modules(model: Any) -> dict[int, GatedSwinFusion]:
-    modules: dict[int, GatedSwinFusion] = {}
+def _find_fusion_modules(model: Any) -> dict[int, FusionModule]:
+    modules: dict[int, FusionModule] = {}
     for layer in model.model.model:
-        if isinstance(layer, GatedSwinFusion):
+        if isinstance(layer, (GatedSwinFusion, AdaptiveDetailGatedSwinFusion)):
             modules[layer.in_channels] = layer
     return modules
 
@@ -230,7 +249,7 @@ def _candidate_prefixes_for_swin_state(state_dict: dict[str, Any]) -> list[str]:
     return sorted(candidates)
 
 
-def _count_swin_matches(state_dict: dict[str, Any], target_module: GatedSwinFusion, prefix: str) -> tuple[int, int]:
+def _count_swin_matches(state_dict: dict[str, Any], target_module: FusionModule, prefix: str) -> tuple[int, int]:
     own_state = target_module.swin.state_dict()
     matched = 0
     dotted_prefix = prefix.rstrip(".") + "."
@@ -244,7 +263,7 @@ def _count_swin_matches(state_dict: dict[str, Any], target_module: GatedSwinFusi
     return matched, len(own_state)
 
 
-def _best_swin_prefix(state_dict: dict[str, Any], target_module: GatedSwinFusion) -> tuple[str | None, int, int]:
+def _best_swin_prefix(state_dict: dict[str, Any], target_module: FusionModule) -> tuple[str | None, int, int]:
     best_prefix: str | None = None
     best_matched = 0
     target_total = len(target_module.swin.state_dict())
@@ -263,9 +282,9 @@ def load_pretrained_gated_swin_weights(
     p4_ckpt: Path | None = None,
     p5_ckpt: Path | None = None,
 ) -> dict[str, Any]:
-    gated_modules = _find_gated_modules(model)
-    p4_gate = gated_modules.get(128)
-    p5_gate = gated_modules.get(256)
+    fusion_modules = _find_fusion_modules(model)
+    p4_gate = fusion_modules.get(128)
+    p5_gate = fusion_modules.get(256)
 
     result: dict[str, Any] = {
         "p4_source": None,

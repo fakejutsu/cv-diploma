@@ -11,6 +11,7 @@ Updated: 2026-04-26
 - `YOLO26n + GatedSwinFusion(P4, P5)` как channel-wise gated context variant.
 - `YOLO26n + GatedSwinFusion(P4, P5)` с softer gate-start и composite pretrained Swin warm-start.
 - `YOLO26n + GatedSwinFusion(P4, P5)` с conservative gate-start (`init_alpha=6.0`) для random-Swin runs от dataset-pretrained baseline.
+- `YOLO26n + AdaptiveDetailGatedSwinFusion(P4, P5)` как detail-aware adaptive fusion variant без замены штатного backbone.
 - `YOLO26m teacher -> lightweight Swin-based student` через `P5` feature distillation.
 
 ## System State
@@ -27,17 +28,18 @@ Updated: 2026-04-26
 - `HybridCnnSwinTBackbone` реализует `YOLO-style stride-preserving stem (Conv/C3k2) -> timm Swin-T(features_only)` и выдаёт multi-scale features в `NCHW`: [`custom_models/hybrid_cnn_swin_t_backbone.py`](../custom_models/hybrid_cnn_swin_t_backbone.py).
 - `SwinContextBlock` реализован как лёгкий Swin-style context enhancer поверх уже вычисленного YOLO feature map `P5`, использует `torchvision.models.swin_transformer.SwinTransformerBlock` и сохраняет `NCHW`-контракт входа/выхода: [`custom_models/swin_context_block.py`](../custom_models/swin_context_block.py).
 - `GatedSwinFusion` реализован как channel-wise gated fusion между исходным CNN feature map и его Swin-enhanced контекстом, использует обучаемый `raw_alpha` shape `[1, C, 1, 1]`: [`custom_models/gated_swin_fusion.py`](../custom_models/gated_swin_fusion.py).
+- `AdaptiveDetailGatedSwinFusion` реализован как вход-зависимый fusion между исходным CNN feature map и его Swin-enhanced контекстом, использует `raw_alpha` prior, channel gate, spatial gate и detail-aware bias: [`custom_models/adaptive_detail_gated_swin_fusion.py`](../custom_models/adaptive_detail_gated_swin_fusion.py).
 - Оба backbone не выполняют принудительный внутренний resize входа; spatial размер задаётся внешним training pipeline (`imgsz`) и сохраняет корректный stride-контракт для `Detect`.
 - В гибридном пути stem не выполняет downsample (stride=1), поэтому `Detect` сохраняет ожидаемые strides `[8,16,32]`.
-- Поддерживаются шесть YAML-шаблонов архитектуры:
-- Поддерживаются семь YAML-шаблонов архитектуры:
+- Поддерживаются восемь YAML-шаблонов архитектуры:
   - [`models/yolo26_cnn_swin_t.yaml`](../models/yolo26_cnn_swin_t.yaml) — дефолтный гибридный путь;
   - [`models/yolo26_swin_t.yaml`](../models/yolo26_swin_t.yaml) — legacy pure Swin-T путь;
   - [`models/yolo26n_swin_context_p5.yaml`](../models/yolo26n_swin_context_p5.yaml) — `YOLO26n + SwinContextBlock(P5)` без замены backbone;
   - [`models/yolo26n_swin_context_p4_light.yaml`](../models/yolo26n_swin_context_p4_light.yaml) — `YOLO26n + light SwinContextBlock(P4)` без замены backbone;
   - [`models/yolo26n_gated_swin_p4_p5.yaml`](../models/yolo26n_gated_swin_p4_p5.yaml) — `YOLO26n + GatedSwinFusion(P4, P5)` без замены backbone;
-  - [`models/yolo26n_gated_swin_p4_p5_pretrained.yaml`](../models/yolo26n_gated_swin_p4_p5_pretrained.yaml) — `YOLO26n + GatedSwinFusion(P4, P5)` с `init_alpha=2.0` и optional pretrained Swin subweight warm-start.
+  - [`models/yolo26n_gated_swin_p4_p5_pretrained.yaml`](../models/yolo26n_gated_swin_p4_p5_pretrained.yaml) — `YOLO26n + GatedSwinFusion(P4, P5)` с `init_alpha=2.0` и optional pretrained Swin subweight warm-start;
   - [`models/yolo26n_gated_swin_p4_p5_alpha6.yaml`](../models/yolo26n_gated_swin_p4_p5_alpha6.yaml) — `YOLO26n + GatedSwinFusion(P4, P5)` с `init_alpha=6.0` для random-Swin запуска от dataset-pretrained baseline.
+  - [`models/yolo26n_adaptive_detail_gated_swin_p4_p5.yaml`](../models/yolo26n_adaptive_detail_gated_swin_p4_p5.yaml) — `YOLO26n + AdaptiveDetailGatedSwinFusion(P4, P5)` с input-adaptive channel/spatial/detail gate.
 - Для distillation-пути teacher задаётся отдельным checkpoint `YOLO26m`, а student может быть:
   - существующий [`models/yolo26n_swin_context_p5.yaml`](../models/yolo26n_swin_context_p5.yaml);
   - pure Swin student на [`models/yolo26_swin_t.yaml`](../models/yolo26_swin_t.yaml) при явной регистрации `--student-backbone-variant swin_t`.
@@ -66,6 +68,11 @@ Updated: 2026-04-26
   - wiring совпадает с `models/yolo26n_gated_swin_p4_p5.yaml`;
   - `init_alpha=6.0` задаётся только в YAML;
   - сценарий предназначен для запуска от dataset-pretrained baseline checkpoint без pretrained Swin subweights.
+- В `models/yolo26n_adaptive_detail_gated_swin_p4_p5.yaml`:
+  - wiring совпадает с `models/yolo26n_gated_swin_p4_p5.yaml`;
+  - `P4` и `P5` проходят через отдельные `AdaptiveDetailGatedSwinFusion`;
+  - gate остаётся совместимым с `raw_alpha` prior и inner `SwinContextBlock` warm-start;
+  - `alpha` зависит от текущих CNN/Swin признаков и local detail energy, а не только от статического параметра.
 - Для distillation-пути:
   - teacher `YOLO26m` используется только во время train и не участвует в inference student;
   - student warm-start задаётся отдельным checkpoint через `--student-weights`;
@@ -91,6 +98,7 @@ Updated: 2026-04-26
   - shape-контракт `feature_backbone -> feature_context -> feature_fused` для `P5` и `P4-light` вариантов;
   - shape-контракт `P4_cnn -> P4_out` и `P5_cnn -> P5_out` для `gated_p4_p5`;
   - `alpha_mean` для `P4/P5` gated modules;
+  - `alpha_mean/min/max`, `detail_mean/max` и `detail_bias_mean/max` для adaptive gated modules;
   - optional matched counts для pretrained `P4/P5` Swin subweights;
   - различие по числу параметров baseline vs modified.
 - Добавлен отдельный sanity-check distillation setup:
@@ -129,5 +137,11 @@ Updated: 2026-04-26
   - `P4_out` и `P5_out` сохраняют shape исходных `P4/P5`;
   - `alpha4` shape `[1, 128, 1, 1]`, `alpha5` shape `[1, 256, 1, 1]`;
   - gate является channel-wise и обучаемым;
+  - `Detect` head остаётся штатным по смыслу.
+- Для `YOLO26n + AdaptiveDetailGatedSwinFusion(P4, P5)` обязателен контракт:
+  - `P4_out` и `P5_out` сохраняют shape исходных `P4/P5`;
+  - `raw_alpha` остаётся базовым prior shape `[1, C, 1, 1]`;
+  - `alpha` зависит от входных признаков через channel gate, spatial gate и detail-aware bias;
+  - inner `swin` поддерживает тот же `load_swin_weights(...)` контракт, что и `GatedSwinFusion`;
   - `Detect` head остаётся штатным по смыслу.
 - Артефакты обучения сохраняются в стандартной структуре `runs/<name>/weights/{best,last}.pt`.

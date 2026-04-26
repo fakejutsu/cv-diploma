@@ -6,9 +6,11 @@ def register_context_modules() -> None:
 
     from ultralytics.nn import tasks
 
+    from .adaptive_detail_gated_swin_fusion import AdaptiveDetailGatedSwinFusion
     from .gated_swin_fusion import GatedSwinFusion
     from .swin_context_block import SwinContextBlock
 
+    tasks.AdaptiveDetailGatedSwinFusion = AdaptiveDetailGatedSwinFusion
     tasks.GatedSwinFusion = GatedSwinFusion
     tasks.SwinContextBlock = SwinContextBlock
 

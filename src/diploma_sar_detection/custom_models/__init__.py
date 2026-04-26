@@ -1,3 +1,4 @@
+from .adaptive_detail_gated_swin_fusion import AdaptiveDetailGatedSwinFusion
 from .distill_swin_p5_model import DistillSwinP5DetectionModel
 from .gated_swin_fusion import GatedSwinFusion
 from .hybrid_cnn_swin_t_backbone import HybridCnnSwinTBackbone
@@ -11,6 +12,7 @@ __all__ = [
     "SwinContextBlock",
     "DistillSwinP5DetectionModel",
     "GatedSwinFusion",
+    "AdaptiveDetailGatedSwinFusion",
     "register_backbone",
     "register_context_modules",
     "register_swin_t_backbone",

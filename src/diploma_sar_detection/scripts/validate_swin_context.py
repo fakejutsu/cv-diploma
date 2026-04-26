@@ -30,7 +30,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--imgsz", type=int, default=640, help="Dummy input image size.")
     parser.add_argument(
         "--variant",
-        choices=("auto", "p5", "p4_light", "gated_p4_p5"),
+        choices=("auto", "p5", "p4_light", "gated_p4_p5", "adaptive_gated_p4_p5"),
         default="auto",
         help="Expected context variant. Use auto to infer from YAML filename.",
     )
@@ -68,6 +68,8 @@ def _resolve_variant(variant: str, model_yaml_path: Path) -> str:
         return variant
 
     model_name = model_yaml_path.name.lower()
+    if "adaptive_detail_gated_swin_p4_p5" in model_name:
+        return "adaptive_gated_p4_p5"
     if "gated_swin_p4_p5" in model_name:
         return "gated_p4_p5"
     if "p4_light" in model_name:
@@ -76,7 +78,7 @@ def _resolve_variant(variant: str, model_yaml_path: Path) -> str:
 
 
 def _hook_indices(variant: str) -> dict[str, int]:
-    if variant == "gated_p4_p5":
+    if variant in {"gated_p4_p5", "adaptive_gated_p4_p5"}:
         return {
             "p4_backbone": 6,
             "p4_out": 11,
@@ -103,6 +105,18 @@ def _print_layer_table(yolo_model: Any) -> None:
     print("-----------")
     for index, layer in enumerate(yolo_model.model.model):
         print(f"{index:2d} | from={str(layer.f):<10} | type={layer.type}")
+
+
+def _print_gate_stats(name: str, gate: Any, *, detail: bool = False) -> None:
+    print(f"alpha_mean_{name}: {gate.alpha_mean:.6f}")
+    if hasattr(gate, "alpha_min") and hasattr(gate, "alpha_max"):
+        print(f"alpha_min_{name}: {gate.alpha_min:.6f}")
+        print(f"alpha_max_{name}: {gate.alpha_max:.6f}")
+    if detail:
+        print(f"detail_mean_{name}: {gate.detail_mean:.6f}")
+        print(f"detail_max_{name}: {gate.detail_max:.6f}")
+        print(f"detail_bias_mean_{name}: {gate.detail_bias_mean:.6f}")
+        print(f"detail_bias_max_{name}: {gate.detail_bias_max:.6f}")
 
 
 def main() -> int:
@@ -174,7 +188,7 @@ def main() -> int:
                 raise RuntimeError(f"Failed to capture tensor for {key}.")
             print(f"{key}: {tuple(value.shape)}")
 
-        if variant == "gated_p4_p5":
+        if variant in {"gated_p4_p5", "adaptive_gated_p4_p5"}:
             p4_backbone = captured["p4_backbone"]
             p4_out = captured["p4_out"]
             p5_backbone = captured["p5_backbone"]
@@ -186,8 +200,9 @@ def main() -> int:
 
             p4_gate = context.model.model[11]
             p5_gate = context.model.model[12]
-            print(f"alpha_mean_p4: {p4_gate.alpha_mean:.6f}")
-            print(f"alpha_mean_p5: {p5_gate.alpha_mean:.6f}")
+            print_detail_stats = variant == "adaptive_gated_p4_p5"
+            _print_gate_stats("p4", p4_gate, detail=print_detail_stats)
+            _print_gate_stats("p5", p5_gate, detail=print_detail_stats)
             if composite_result is not None:
                 print(
                     "p4_swin_loaded: "
