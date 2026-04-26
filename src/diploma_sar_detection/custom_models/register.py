@@ -9,6 +9,7 @@ def register_context_modules() -> None:
     from .adaptive_detail_gated_swin_fusion import AdaptiveDetailGatedSwinFusion
     from .gated_swin_fusion import GatedSwinFusion
     from .gated_wavevit_fusion import GatedWaveVitFusion
+    from .residual_adaptive_swin_fusion import ResidualAdaptiveSwinFusion
     from .residual_adaptive_wavevit_fusion import ResidualAdaptiveWaveVitFusion
     from .swin_context_block import SwinContextBlock
     from .wavevit_context_block import WaveVitContextBlock
@@ -16,6 +17,7 @@ def register_context_modules() -> None:
     tasks.AdaptiveDetailGatedSwinFusion = AdaptiveDetailGatedSwinFusion
     tasks.GatedSwinFusion = GatedSwinFusion
     tasks.GatedWaveVitFusion = GatedWaveVitFusion
+    tasks.ResidualAdaptiveSwinFusion = ResidualAdaptiveSwinFusion
     tasks.ResidualAdaptiveWaveVitFusion = ResidualAdaptiveWaveVitFusion
     tasks.SwinContextBlock = SwinContextBlock
     tasks.WaveVitContextBlock = WaveVitContextBlock

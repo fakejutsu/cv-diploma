@@ -14,6 +14,7 @@ from custom_models import (
     AdaptiveDetailGatedSwinFusion,
     GatedSwinFusion,
     GatedWaveVitFusion,
+    ResidualAdaptiveSwinFusion,
     ResidualAdaptiveWaveVitFusion,
     register_context_modules,
 )
@@ -62,6 +63,7 @@ _WEIGHT_TRANSFER_STRATEGIES = {
     "context_shift3": _BASELINE_TO_CONTEXT_LAYER_REMAP,
     "gated_shift2": _BASELINE_TO_GATED_P4_P5_LAYER_REMAP,
     "adaptive_gated_shift2": _BASELINE_TO_GATED_P4_P5_LAYER_REMAP,
+    "residual_adaptive_swin_shift2": _BASELINE_TO_GATED_P4_P5_LAYER_REMAP,
     "wavevit_p3_p4_shift2": _BASELINE_TO_GATED_P4_P5_LAYER_REMAP,
     "residual_adaptive_wavevit_p3_p4_shift2": _BASELINE_TO_GATED_P4_P5_LAYER_REMAP,
 }
@@ -215,6 +217,8 @@ def _collect_compatible_weights(
 
 def _preferred_weight_transfer_strategy(model: Any) -> str | None:
     for layer in model.model.model:
+        if isinstance(layer, ResidualAdaptiveSwinFusion):
+            return "residual_adaptive_swin_shift2"
         if isinstance(layer, ResidualAdaptiveWaveVitFusion):
             return "residual_adaptive_wavevit_p3_p4_shift2"
         if isinstance(layer, GatedWaveVitFusion):
