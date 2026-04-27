@@ -26,7 +26,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--backbone-variant",
         default="auto",
-        choices=("auto", "swin_t", "cnn_swin_t"),
+        choices=(
+            "auto",
+            "swin_t",
+            "cnn_swin_t",
+            "wavevit_s",
+            "wavevit_b",
+            "wavevit_l",
+            "original_wavevit_s",
+            "original_wavevit_b",
+            "original_wavevit_l",
+        ),
         help="Backbone registration variant. Use auto to infer from --model path.",
     )
     parser.add_argument("--epochs", type=int, default=10, help="Number of training epochs.")
@@ -66,6 +76,11 @@ def parse_args() -> argparse.Namespace:
         default=1.0,
         help="Fraction of the training dataset to use for a smoke test or quick run.",
     )
+    parser.add_argument(
+        "--pretrained-backbone",
+        type=Path,
+        help="Optional local checkpoint path for custom backbone pretrained weights.",
+    )
     return parser.parse_args()
 
 
@@ -81,10 +96,22 @@ def _resolve_backbone_variant(arg_variant: str, model_path: Path) -> str:
         return arg_variant
 
     model_name = model_path.name.lower()
+    if "original_wavevit_l" in model_name:
+        return "original_wavevit_l"
+    if "original_wavevit_b" in model_name:
+        return "original_wavevit_b"
+    if "original_wavevit" in model_name:
+        return "original_wavevit_s"
     if "cnn_swin" in model_name:
         return "cnn_swin_t"
     if "swin" in model_name:
         return "swin_t"
+    if "wavevit_l" in model_name:
+        return "wavevit_l"
+    if "wavevit_b" in model_name:
+        return "wavevit_b"
+    if "wavevit" in model_name:
+        return "wavevit_s"
     return "cnn_swin_t"
 
 
@@ -137,6 +164,7 @@ def main() -> int:
         "exist_ok": args.exist_ok,
         "yolo_config_dir": str(config_dir),
         "fraction": args.fraction,
+        "pretrained_backbone": args.pretrained_backbone,
     }
     _print_run_configuration(run_config)
 
@@ -145,6 +173,16 @@ def main() -> int:
 
         register_backbone(backbone_variant)
         model = YOLO(str(model_path))
+        if args.pretrained_backbone is not None:
+            backbone = model.model.model[0]
+            load_pretrained = getattr(backbone, "load_pretrained", None)
+            if not callable(load_pretrained):
+                raise RuntimeError(
+                    f"Backbone `{type(backbone).__name__}` does not support --pretrained-backbone loading."
+                )
+            load_pretrained(args.pretrained_backbone)
+            model.ckpt = {"model": model.model, "epoch": -1, "optimizer": None}
+            model.ckpt_path = str(args.pretrained_backbone)
         train_kwargs: dict[str, Any] = {
             "data": str(data_path),
             "epochs": args.epochs,

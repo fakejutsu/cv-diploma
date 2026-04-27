@@ -1,0 +1,40 @@
+# YOLO26-style detector with an original-architecture WaveViT-S backbone
+# initialized from the official ImageNet-1K 224 checkpoint alias.
+#
+# The checkpoint file is expected at:
+#   weights/pretrained/wavevit/wavevit_s_224.pth
+# Source:
+#   https://github.com/YehLi/ImageNetModel/tree/main/classification
+
+nc: 5
+
+backbone:
+  # Args after Ultralytics TorchVision parsing:
+  # [model_name, pretrained_alias_or_path, out_indices]
+  - [-1, 1, TorchVision, [448, original_wavevit_s, imagenet_1k_224, [1, 2, 3]]]
+
+head:
+  # Original WaveViT-S backbone outputs (P3, P4, P5)
+  - [0, 1, Index, [128, 0]] # 1: P3/8
+  - [0, 1, Index, [320, 1]] # 2: P4/16
+  - [0, 1, Index, [448, 2]] # 3: P5/32
+
+  # Top-down FPN path
+  - [3, 1, nn.Upsample, [None, 2, "nearest"]] # 4
+  - [[-1, 2], 1, Concat, [1]] # 5
+  - [-1, 2, C2f, [320]] # 6
+
+  - [6, 1, nn.Upsample, [None, 2, "nearest"]] # 7
+  - [[-1, 1], 1, Concat, [1]] # 8
+  - [-1, 2, C2f, [128]] # 9 (P3/8-small)
+
+  # Bottom-up PAN path
+  - [9, 1, Conv, [128, 3, 2]] # 10
+  - [[-1, 6], 1, Concat, [1]] # 11
+  - [-1, 2, C2f, [320]] # 12 (P4/16-medium)
+
+  - [12, 1, Conv, [320, 3, 2]] # 13
+  - [[-1, 3], 1, Concat, [1]] # 14
+  - [-1, 2, C2f, [448]] # 15 (P5/32-large)
+
+  - [[9, 12, 15], 1, Detect, [nc]]

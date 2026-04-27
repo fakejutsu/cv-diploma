@@ -18,7 +18,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--backbone-variant",
         default="auto",
-        choices=("auto", "swin_t", "cnn_swin_t"),
+        choices=(
+            "auto",
+            "swin_t",
+            "cnn_swin_t",
+            "wavevit_s",
+            "wavevit_b",
+            "wavevit_l",
+            "original_wavevit_s",
+            "original_wavevit_b",
+            "original_wavevit_l",
+        ),
         help="Custom backbone registration variant. Use auto to infer order from checkpoint name.",
     )
     parser.add_argument("--imgsz", type=int, default=640, help="Inference image size.")
@@ -50,6 +60,18 @@ def resolve_backbone_variant_candidates(requested_variant: str, model_path: Path
         return (requested_variant,)
 
     model_name = model_path.name.lower()
+    if "original_wavevit_l" in model_name:
+        return ("original_wavevit_l", "original_wavevit_s", "wavevit_l", "wavevit_s", "cnn_swin_t", "swin_t")
+    if "original_wavevit_b" in model_name:
+        return ("original_wavevit_b", "original_wavevit_s", "wavevit_b", "wavevit_s", "cnn_swin_t", "swin_t")
+    if "original_wavevit" in model_name:
+        return ("original_wavevit_s", "original_wavevit_b", "original_wavevit_l", "wavevit_s", "cnn_swin_t", "swin_t")
+    if "wavevit_l" in model_name:
+        return ("wavevit_l", "wavevit_s", "cnn_swin_t", "swin_t")
+    if "wavevit_b" in model_name:
+        return ("wavevit_b", "wavevit_s", "cnn_swin_t", "swin_t")
+    if "wavevit" in model_name:
+        return ("wavevit_s", "wavevit_b", "wavevit_l", "cnn_swin_t", "swin_t")
     if "cnn_swin" in model_name:
         return ("cnn_swin_t", "swin_t")
     if "swin" in model_name:

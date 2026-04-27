@@ -32,6 +32,8 @@ def register_backbone(variant: str = "cnn_swin_t") -> None:
     Supported variants:
     - `swin_t`: pure timm Swin-T wrapper
     - `cnn_swin_t`: lightweight CNN stem followed by timm Swin-T
+    - `wavevit_s`/`wavevit_b`/`wavevit_l`: pure local WaveViT wrapper
+    - `original_wavevit_s`/`original_wavevit_b`/`original_wavevit_l`: original-architecture WaveViT wrapper
     """
 
     normalized_variant = variant.strip().lower()
@@ -49,7 +51,23 @@ def register_backbone(variant: str = "cnn_swin_t") -> None:
         tasks.TorchVision = HybridCnnSwinTBackbone
         return
 
-    raise ValueError(f"Unsupported backbone variant: {variant}. Use 'swin_t' or 'cnn_swin_t'.")
+    if normalized_variant in {"wavevit_s", "wavevit_b", "wavevit_l"}:
+        from .wavevit_backbone import WaveVitBackbone
+
+        tasks.TorchVision = WaveVitBackbone
+        return
+
+    if normalized_variant in {"original_wavevit_s", "original_wavevit_b", "original_wavevit_l"}:
+        from .original_wavevit_backbone import OriginalWaveVitBackbone
+
+        tasks.TorchVision = OriginalWaveVitBackbone
+        return
+
+    raise ValueError(
+        f"Unsupported backbone variant: {variant}. "
+        "Use 'swin_t', 'cnn_swin_t', 'wavevit_s', 'wavevit_b', 'wavevit_l', "
+        "'original_wavevit_s', 'original_wavevit_b', or 'original_wavevit_l'."
+    )
 
 
 def register_swin_t_backbone() -> None:
@@ -62,3 +80,9 @@ def register_cnn_swin_t_backbone() -> None:
     """Register the hybrid CNN+Swin-T backbone wrapper."""
 
     register_backbone("cnn_swin_t")
+
+
+def register_wavevit_backbone(variant: str = "wavevit_s") -> None:
+    """Register a pure WaveViT backbone wrapper."""
+
+    register_backbone(variant)

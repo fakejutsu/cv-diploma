@@ -5,6 +5,8 @@ Updated: 2026-04-26
 ## Scope
 Текущее состояние экспериментальных transformer/context интеграций в training pipeline YOLO26:
 - legacy pure `Swin-T` backbone replacement;
+- pure `WaveViT-S` backbone replacement;
+- original-architecture `WaveViT-S` backbone replacement;
 - hybrid `CNN -> Swin-T` backbone replacement;
 - `YOLO26n + SwinContextBlock(P5)` как context-enhancement путь без замены штатного CNN-backbone;
 - `YOLO26n + light SwinContextBlock(P4)` как отдельный light context variant;
@@ -30,6 +32,9 @@ Updated: 2026-04-26
   Реализация: [`custom_models/register.py`](../custom_models/register.py).
 - Для context-enhancement пути используется отдельная регистрация локальных YAML-модулей через `register_context_modules()`, которая экспортирует local context/fusion modules в `ultralytics.nn.tasks`: [`custom_models/register.py`](../custom_models/register.py).
 - `SwinTBackbone` реализован как timm-обёртка (`features_only=True`) с выдачей multi-scale features и приведением к формату `NCHW`: [`custom_models/swin_t_backbone.py`](../custom_models/swin_t_backbone.py).
+- `WaveVitBackbone` реализован как локальный multi-stage WaveViT-style backbone с Haar wavelet attention и выдачей multi-scale features в `NCHW`: [`custom_models/wavevit_backbone.py`](../custom_models/wavevit_backbone.py).
+- `OriginalWaveVitBackbone` реализован как side-by-side wrapper оригинальной stage architecture WaveViT с `features_only` outputs для YOLO: [`custom_models/original_wavevit_backbone.py`](../custom_models/original_wavevit_backbone.py).
+- `OriginalWaveVitBackbone` поддерживает загрузку локального official-style checkpoint через `load_pretrained()` и built-in aliases `imagenet_1k_224`/`imagenet_1k_384`; `scripts/train_swin.py` пробрасывает это через `--pretrained-backbone`.
 - `HybridCnnSwinTBackbone` реализует `YOLO-style stride-preserving stem (Conv/C3k2) -> timm Swin-T(features_only)` и выдаёт multi-scale features в `NCHW`: [`custom_models/hybrid_cnn_swin_t_backbone.py`](../custom_models/hybrid_cnn_swin_t_backbone.py).
 - `SwinContextBlock` реализован как лёгкий Swin-style context enhancer поверх уже вычисленного YOLO feature map `P5`, использует `torchvision.models.swin_transformer.SwinTransformerBlock` и сохраняет `NCHW`-контракт входа/выхода: [`custom_models/swin_context_block.py`](../custom_models/swin_context_block.py).
 - `GatedSwinFusion` реализован как channel-wise gated fusion между исходным CNN feature map и его Swin-enhanced контекстом, использует обучаемый `raw_alpha` shape `[1, C, 1, 1]`: [`custom_models/gated_swin_fusion.py`](../custom_models/gated_swin_fusion.py).
@@ -44,6 +49,9 @@ Updated: 2026-04-26
 - Поддерживаются одиннадцать YAML-шаблонов архитектуры:
   - [`models/yolo26_cnn_swin_t.yaml`](../models/yolo26_cnn_swin_t.yaml) — дефолтный гибридный путь;
   - [`models/yolo26_swin_t.yaml`](../models/yolo26_swin_t.yaml) — legacy pure Swin-T путь;
+  - [`models/yolo26_wavevit_s.yaml`](../models/yolo26_wavevit_s.yaml) — pure WaveViT-S backbone путь;
+  - [`models/yolo26_original_wavevit_s.yaml`](../models/yolo26_original_wavevit_s.yaml) — original-architecture WaveViT-S backbone путь;
+  - [`models/yolo26_original_wavevit_s_imagenet.yaml`](../models/yolo26_original_wavevit_s_imagenet.yaml) — original-architecture WaveViT-S путь с official ImageNet-1K pretrained alias;
   - [`models/yolo26n_swin_context_p5.yaml`](../models/yolo26n_swin_context_p5.yaml) — `YOLO26n + SwinContextBlock(P5)` без замены backbone;
   - [`models/yolo26n_swin_context_p4_light.yaml`](../models/yolo26n_swin_context_p4_light.yaml) — `YOLO26n + light SwinContextBlock(P4)` без замены backbone;
   - [`models/yolo26n_gated_swin_p4_p5.yaml`](../models/yolo26n_gated_swin_p4_p5.yaml) — `YOLO26n + GatedSwinFusion(P4, P5)` без замены backbone;

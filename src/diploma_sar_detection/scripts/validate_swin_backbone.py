@@ -12,13 +12,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from custom_models import HybridCnnSwinTBackbone, SwinTBackbone, register_backbone
+from custom_models import HybridCnnSwinTBackbone, OriginalWaveVitBackbone, SwinTBackbone, WaveVitBackbone, register_backbone
 from utils import configure_ultralytics
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Validate that YOLO26 Swin-based backbones are wired correctly in this repository."
+        description="Validate that YOLO26 transformer backbones are wired correctly in this repository."
     )
     parser.add_argument(
         "--model-yaml",
@@ -29,10 +29,25 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--backbone-variant",
         default="auto",
-        choices=("auto", "swin_t", "cnn_swin_t"),
+        choices=(
+            "auto",
+            "swin_t",
+            "cnn_swin_t",
+            "wavevit_s",
+            "wavevit_b",
+            "wavevit_l",
+            "original_wavevit_s",
+            "original_wavevit_b",
+            "original_wavevit_l",
+        ),
         help="Backbone registration variant. Use auto to infer from --model-yaml path.",
     )
     parser.add_argument("--checkpoint", type=Path, help="Optional checkpoint to verify loading path.")
+    parser.add_argument(
+        "--pretrained-backbone",
+        type=Path,
+        help="Optional local checkpoint path for custom backbone pretrained weights.",
+    )
     parser.add_argument("--imgsz", type=int, default=320, help="Input image size for backbone forward validation.")
     parser.add_argument("--skip-forward", action="store_true", help="Skip dummy forward shape validation.")
     parser.add_argument("--yolo-config-dir", type=Path, help="Directory for Ultralytics settings and cache files.")
@@ -56,10 +71,22 @@ def _resolve_backbone_variant(arg_variant: str, model_yaml_path: Path) -> str:
         return arg_variant
 
     model_name = model_yaml_path.name.lower()
+    if "original_wavevit_l" in model_name:
+        return "original_wavevit_l"
+    if "original_wavevit_b" in model_name:
+        return "original_wavevit_b"
+    if "original_wavevit" in model_name:
+        return "original_wavevit_s"
     if "cnn_swin" in model_name:
         return "cnn_swin_t"
     if "swin" in model_name:
         return "swin_t"
+    if "wavevit_l" in model_name:
+        return "wavevit_l"
+    if "wavevit_b" in model_name:
+        return "wavevit_b"
+    if "wavevit" in model_name:
+        return "wavevit_s"
     return "cnn_swin_t"
 
 
@@ -68,6 +95,10 @@ def _expected_backbone_class(variant: str) -> Type[Any]:
         return SwinTBackbone
     if variant == "cnn_swin_t":
         return HybridCnnSwinTBackbone
+    if variant in {"wavevit_s", "wavevit_b", "wavevit_l"}:
+        return WaveVitBackbone
+    if variant in {"original_wavevit_s", "original_wavevit_b", "original_wavevit_l"}:
+        return OriginalWaveVitBackbone
     raise ValueError(f"Unsupported backbone variant: {variant}")
 
 
@@ -130,6 +161,13 @@ def main() -> int:
 
         yaml_model = YOLO(str(model_yaml_path))
         yaml_backbone = _get_backbone_layer(yaml_model)
+        if args.pretrained_backbone is not None:
+            load_pretrained = getattr(yaml_backbone, "load_pretrained", None)
+            if not callable(load_pretrained):
+                raise RuntimeError(
+                    f"Backbone `{type(yaml_backbone).__name__}` does not support --pretrained-backbone loading."
+                )
+            load_pretrained(args.pretrained_backbone.expanduser().resolve())
         yaml_detect = _get_detect_layer(yaml_model)
 
         print("YAML build checks")
@@ -160,7 +198,7 @@ def main() -> int:
             print(f"Detect input channels: {detect_input_channels}")
             if detect_input_channels != expected_index_channels:
                 raise RuntimeError(
-                    "Detect input channels do not match the expected Swin-based channel contract "
+                    "Detect input channels do not match the expected transformer-backbone channel contract "
                     f"{expected_index_channels}. Got {detect_input_channels}."
                 )
 
@@ -173,7 +211,7 @@ def main() -> int:
                 abs(actual - expected) > 0.01 for actual, expected in zip(strides, expected_strides)
             ):
                 raise RuntimeError(
-                    "Unexpected Detect strides for Swin-based integration. "
+                    "Unexpected Detect strides for transformer-backbone integration. "
                     f"Expected {expected_strides}, got {strides}."
                 )
 
