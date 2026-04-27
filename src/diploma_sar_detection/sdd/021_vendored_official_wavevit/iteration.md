@@ -21,12 +21,14 @@
 3. Add `OfficialWaveVitBackbone` wrapper that builds official `WaveViT`, strips classification use from forward, and returns stage outputs.
 4. Add `models/yolo26_official_wavevit_s.yaml`.
 5. Add `official_wavevit_s` registration and CLI support.
+6. Add explicit training stability knobs to `scripts/train_swin.py`: `--lr0`, `--lrf`, `--weight-decay`, `--mosaic`.
 
 ## Spec updates
 - `official_wavevit_s` becomes the preferred route for original WaveViT experiments.
 - Prior `original_wavevit_s` manual-port remains available but is no longer the recommended original-checkpoint path.
 - Added separate YAMLs for non-pretrained and ImageNet-1K pretrained official WaveViT-S.
 - Official checkpoint loading uses exact official keys without remapping, ignoring only classification/token-label heads.
+- Official WaveViT pretrained runs should not rely on Ultralytics default `lr0=0.01`; use explicit low LR and consider disabling AMP for the first smoke.
 
 ## Open questions
 - Whether official checkpoint includes buffers that require exact `torch_wavelets`; fallback should be compatible but must be verified with loaded/missing/unexpected report.
