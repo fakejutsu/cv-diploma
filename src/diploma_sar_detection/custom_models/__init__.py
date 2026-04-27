@@ -4,6 +4,7 @@ from .distill_swin_p5_model import DistillSwinP5DetectionModel
 from .gated_swin_fusion import GatedSwinFusion
 from .gated_wavevit_fusion import GatedWaveVitFusion
 from .hybrid_cnn_swin_t_backbone import HybridCnnSwinTBackbone
+from .official_wavevit_backbone import OfficialWaveVitBackbone
 from .original_wavevit_backbone import OriginalWaveVitBackbone
 from .register import (
     register_backbone,
@@ -24,6 +25,7 @@ __all__ = [
     "SwinTBackbone",
     "WaveVitBackbone",
     "OriginalWaveVitBackbone",
+    "OfficialWaveVitBackbone",
     "HybridCnnSwinTBackbone",
     "SwinContextBlock",
     "WaveVitContextBlock",

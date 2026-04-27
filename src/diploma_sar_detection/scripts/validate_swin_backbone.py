@@ -12,7 +12,14 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from custom_models import HybridCnnSwinTBackbone, OriginalWaveVitBackbone, SwinTBackbone, WaveVitBackbone, register_backbone
+from custom_models import (
+    HybridCnnSwinTBackbone,
+    OfficialWaveVitBackbone,
+    OriginalWaveVitBackbone,
+    SwinTBackbone,
+    WaveVitBackbone,
+    register_backbone,
+)
 from utils import configure_ultralytics
 
 
@@ -39,6 +46,9 @@ def parse_args() -> argparse.Namespace:
             "original_wavevit_s",
             "original_wavevit_b",
             "original_wavevit_l",
+            "official_wavevit_s",
+            "official_wavevit_b",
+            "official_wavevit_l",
         ),
         help="Backbone registration variant. Use auto to infer from --model-yaml path.",
     )
@@ -71,6 +81,12 @@ def _resolve_backbone_variant(arg_variant: str, model_yaml_path: Path) -> str:
         return arg_variant
 
     model_name = model_yaml_path.name.lower()
+    if "official_wavevit_l" in model_name:
+        return "official_wavevit_l"
+    if "official_wavevit_b" in model_name:
+        return "official_wavevit_b"
+    if "official_wavevit" in model_name:
+        return "official_wavevit_s"
     if "original_wavevit_l" in model_name:
         return "original_wavevit_l"
     if "original_wavevit_b" in model_name:
@@ -99,6 +115,8 @@ def _expected_backbone_class(variant: str) -> Type[Any]:
         return WaveVitBackbone
     if variant in {"original_wavevit_s", "original_wavevit_b", "original_wavevit_l"}:
         return OriginalWaveVitBackbone
+    if variant in {"official_wavevit_s", "official_wavevit_b", "official_wavevit_l"}:
+        return OfficialWaveVitBackbone
     raise ValueError(f"Unsupported backbone variant: {variant}")
 
 

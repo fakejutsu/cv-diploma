@@ -28,6 +28,9 @@ def parse_args() -> argparse.Namespace:
             "original_wavevit_s",
             "original_wavevit_b",
             "original_wavevit_l",
+            "official_wavevit_s",
+            "official_wavevit_b",
+            "official_wavevit_l",
         ),
         help="Custom backbone registration variant. Use auto to infer order from checkpoint name.",
     )
@@ -62,6 +65,12 @@ def resolve_backbone_variant_candidates(requested_variant: str, model_path: Path
         return (requested_variant,)
 
     model_name = model_path.name.lower()
+    if "official_wavevit_l" in model_name:
+        return ("official_wavevit_l", "official_wavevit_s", "original_wavevit_l", "wavevit_l", "cnn_swin_t", "swin_t")
+    if "official_wavevit_b" in model_name:
+        return ("official_wavevit_b", "official_wavevit_s", "original_wavevit_b", "wavevit_b", "cnn_swin_t", "swin_t")
+    if "official_wavevit" in model_name:
+        return ("official_wavevit_s", "official_wavevit_b", "official_wavevit_l", "original_wavevit_s", "wavevit_s", "cnn_swin_t", "swin_t")
     if "original_wavevit_l" in model_name:
         return ("original_wavevit_l", "original_wavevit_s", "wavevit_l", "wavevit_s", "cnn_swin_t", "swin_t")
     if "original_wavevit_b" in model_name:
