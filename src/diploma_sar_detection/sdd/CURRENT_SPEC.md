@@ -50,6 +50,8 @@ Updated: 2026-04-26
 - Поддерживаются одиннадцать YAML-шаблонов архитектуры:
   - [`models/yolo26_cnn_swin_t.yaml`](../models/yolo26_cnn_swin_t.yaml) — дефолтный гибридный путь;
   - [`models/yolo26_swin_t.yaml`](../models/yolo26_swin_t.yaml) — legacy pure Swin-T путь;
+  - [`models/yolo26_swin_t_p2.yaml`](../models/yolo26_swin_t_p2.yaml) — pure Swin-T путь с 4-scale `P2/P3/P4/P5` head для small objects;
+  - [`models/yolo26_swin_t_p2_inject_p3.yaml`](../models/yolo26_swin_t_p2_inject_p3.yaml) — pure Swin-T путь, где `P2/4` detail features обогащают `P3/8`, но Detect остаётся 3-scale `P3/P4/P5`;
   - [`models/yolo26_wavevit_s.yaml`](../models/yolo26_wavevit_s.yaml) — pure WaveViT-S backbone путь;
   - [`models/yolo26_original_wavevit_s.yaml`](../models/yolo26_original_wavevit_s.yaml) — original-architecture WaveViT-S backbone путь;
   - [`models/yolo26_original_wavevit_s_imagenet.yaml`](../models/yolo26_original_wavevit_s_imagenet.yaml) — original-architecture WaveViT-S путь с official ImageNet-1K pretrained alias;

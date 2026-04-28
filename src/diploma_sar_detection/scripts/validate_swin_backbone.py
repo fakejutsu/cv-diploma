@@ -214,17 +214,21 @@ def main() -> int:
 
             detect_input_channels = _extract_detect_input_channels(yaml_detect)
             print(f"Detect input channels: {detect_input_channels}")
-            if detect_input_channels != expected_index_channels:
+            expected_detect_channels = expected_index_channels[-len(detect_input_channels) :]
+            if detect_input_channels != expected_detect_channels:
                 raise RuntimeError(
                     "Detect input channels do not match the expected transformer-backbone channel contract "
-                    f"{expected_index_channels}. Got {detect_input_channels}."
+                    f"{expected_detect_channels}. Got {detect_input_channels}."
                 )
 
             strides = [float(value) for value in getattr(yaml_detect, "stride", [])]
             print(f"Detect strides:    {strides}")
             if not strides:
                 raise RuntimeError("Detect stride tensor is empty.")
-            expected_strides = [8.0, 16.0, 32.0]
+            if len(strides) == 4:
+                expected_strides = [4.0, 8.0, 16.0, 32.0]
+            else:
+                expected_strides = [8.0, 16.0, 32.0]
             if len(strides) != len(expected_strides) or any(
                 abs(actual - expected) > 0.01 for actual, expected in zip(strides, expected_strides)
             ):
