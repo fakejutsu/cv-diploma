@@ -1,4 +1,45 @@
-from .register import register_swin_t_backbone
+from .adaptive_detail_gated_swin_fusion import AdaptiveDetailGatedSwinFusion
+from .distill_multi_feature_model import DistillMultiFeatureDetectionModel
+from .distill_swin_p5_model import DistillSwinP5DetectionModel
+from .gated_swin_fusion import GatedSwinFusion
+from .gated_wavevit_fusion import GatedWaveVitFusion
+from .hybrid_cnn_swin_t_backbone import HybridCnnSwinTBackbone
+from .official_wavevit_backbone import OfficialWaveVitBackbone
+from .original_wavevit_backbone import OriginalWaveVitBackbone
+from .register import (
+    register_backbone,
+    register_cnn_swin_t_backbone,
+    register_context_modules,
+    register_swin_t_backbone,
+    register_wavevit_backbone,
+)
+from .residual_adaptive_swin_fusion import ResidualAdaptiveSwinFusion
+from .residual_adaptive_wavevit_fusion import ResidualAdaptiveWaveVitFusion
+from .residual_swin_c2psa import ResidualSwinC2PSA
+from .swin_context_block import SwinContextBlock
 from .swin_t_backbone import SwinTBackbone
+from .wavevit_backbone import WaveVitBackbone
+from .wavevit_context_block import WaveVitContextBlock
 
-__all__ = ["SwinTBackbone", "register_swin_t_backbone"]
+__all__ = [
+    "SwinTBackbone",
+    "WaveVitBackbone",
+    "OriginalWaveVitBackbone",
+    "OfficialWaveVitBackbone",
+    "HybridCnnSwinTBackbone",
+    "SwinContextBlock",
+    "WaveVitContextBlock",
+    "DistillMultiFeatureDetectionModel",
+    "DistillSwinP5DetectionModel",
+    "GatedSwinFusion",
+    "GatedWaveVitFusion",
+    "ResidualAdaptiveSwinFusion",
+    "ResidualAdaptiveWaveVitFusion",
+    "ResidualSwinC2PSA",
+    "AdaptiveDetailGatedSwinFusion",
+    "register_backbone",
+    "register_context_modules",
+    "register_swin_t_backbone",
+    "register_cnn_swin_t_backbone",
+    "register_wavevit_backbone",
+]

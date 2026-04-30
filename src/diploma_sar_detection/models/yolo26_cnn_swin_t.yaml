@@ -1,0 +1,36 @@
+# Hybrid YOLO26 scaffold: stride-preserving YOLO-style stem + timm Swin-T backbone.
+# The `TorchVision` symbol is monkey-patched by scripts/train_swin.py to point
+# to custom_models.HybridCnnSwinTBackbone via `register_backbone("cnn_swin_t")`.
+
+nc: 5
+
+backbone:
+  # Args after Ultralytics TorchVision parsing:
+  # [model_name, pretrained, out_indices, stem_channels]
+  - [-1, 1, TorchVision, [768, swin_tiny_patch4_window7_224, True, [1, 2, 3], [64, 128]]]
+
+head:
+  # Swin backbone outputs (P3, P4, P5)
+  - [0, 1, Index, [192, 0]] # 1: P3/8
+  - [0, 1, Index, [384, 1]] # 2: P4/16
+  - [0, 1, Index, [768, 2]] # 3: P5/32
+
+  # Top-down FPN path
+  - [3, 1, nn.Upsample, [None, 2, "nearest"]] # 4
+  - [[-1, 2], 1, Concat, [1]] # 5
+  - [-1, 2, C2f, [384]] # 6
+
+  - [6, 1, nn.Upsample, [None, 2, "nearest"]] # 7
+  - [[-1, 1], 1, Concat, [1]] # 8
+  - [-1, 2, C2f, [192]] # 9 (P3/8-small)
+
+  # Bottom-up PAN path
+  - [9, 1, Conv, [192, 3, 2]] # 10
+  - [[-1, 6], 1, Concat, [1]] # 11
+  - [-1, 2, C2f, [384]] # 12 (P4/16-medium)
+
+  - [12, 1, Conv, [384, 3, 2]] # 13
+  - [[-1, 3], 1, Concat, [1]] # 14
+  - [-1, 2, C2f, [768]] # 15 (P5/32-large)
+
+  - [[9, 12, 15], 1, Detect, [nc]]

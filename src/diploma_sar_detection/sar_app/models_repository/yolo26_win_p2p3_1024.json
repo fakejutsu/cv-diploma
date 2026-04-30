@@ -1,0 +1,15 @@
+{
+  "name": "Предлагаемый метод 1024",
+  "path": "yolo26_swin_p2_p3_1024.onnx",
+  "input_sizes": [
+    1024
+  ],
+  "class_names": [
+    "swimmer",
+    "boat",
+    "jetski",
+    "life_saving_appliances",
+    "buoy"
+  ],
+  "description": ""
+}

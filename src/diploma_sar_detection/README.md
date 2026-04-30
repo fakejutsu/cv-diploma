@@ -50,6 +50,7 @@ If you need a CUDA-enabled PyTorch build, install it explicitly after `requireme
 diploma_sar_detection/
 |-- custom_models/
 |   |-- __init__.py
+|   |-- hybrid_cnn_swin_t_backbone.py
 |   |-- register.py
 |   `-- swin_t_backbone.py
 |-- data/
@@ -57,6 +58,7 @@ diploma_sar_detection/
 |   `-- README_data.md
 |-- models/
 |   |-- README_models.md
+|   |-- yolo26_cnn_swin_t.yaml
 |   `-- yolo26_swin_t.yaml
 |-- scripts/
 |   |-- check_dataset.py
@@ -202,23 +204,25 @@ This checks that:
 - Ultralytics can build the dataloader
 - the model starts training without committing to a full local run
 
-### 2b. Swin-T scaffold
+### 2b. Swin-based scaffold (hybrid CNN+Swin default)
 
-The project now includes a first scaffold for custom-backbone experiments:
+The project includes a scaffold for Swin-based custom-backbone experiments:
 
-- [custom_models/swin_t_backbone.py](./custom_models/swin_t_backbone.py) wraps a timm Swin-T backbone
-- [custom_models/register.py](./custom_models/register.py) registers the wrapper for Ultralytics YAML parsing
-- [models/yolo26_swin_t.yaml](./models/yolo26_swin_t.yaml) is the initial custom architecture template
-- [scripts/train_swin.py](./scripts/train_swin.py) is the dedicated entrypoint for Swin-T experiments
+- [custom_models/hybrid_cnn_swin_t_backbone.py](./custom_models/hybrid_cnn_swin_t_backbone.py) adds a stride-preserving YOLO-style stem (`Conv/C3k2`) before Swin-T
+- [custom_models/swin_t_backbone.py](./custom_models/swin_t_backbone.py) keeps the legacy pure Swin-T path
+- [custom_models/register.py](./custom_models/register.py) provides explicit variant registration (`cnn_swin_t` / `swin_t`)
+- [models/yolo26_cnn_swin_t.yaml](./models/yolo26_cnn_swin_t.yaml) is the default hybrid architecture template
+- [models/yolo26_swin_t.yaml](./models/yolo26_swin_t.yaml) is the legacy pure Swin-T template for A/B
+- [scripts/train_swin.py](./scripts/train_swin.py) is the dedicated entrypoint for Swin-based experiments
 
 Install `timm` from `requirements.txt` before using this path.
 
-Short smoke test for the custom pipeline:
+Short smoke test for the hybrid custom pipeline:
 
 ```bash
 python scripts/train_swin.py \
   --data data/dataset.yaml \
-  --model models/yolo26_swin_t.yaml \
+  --model models/yolo26_cnn_swin_t.yaml \
   --epochs 1 \
   --imgsz 640 \
   --batch 8 \
@@ -226,10 +230,84 @@ python scripts/train_swin.py \
   --workers 4 \
   --fraction 0.01 \
   --project runs \
-  --name smoke_swin_t
+  --name smoke_cnn_swin_t
 ```
 
-This scaffold gives the project a clean place to integrate and debug `YOLO26 + Swin-T`, but it should still be validated with a short run before committing to long training.
+Legacy pure Swin-T run (optional):
+
+```bash
+python scripts/train_swin.py \
+  --data data/dataset.yaml \
+  --model models/yolo26_swin_t.yaml \
+  --backbone-variant swin_t
+```
+
+This scaffold gives the project a clean place to integrate and debug `YOLO26 + CNN+Swin` and `YOLO26 + Swin-T`, but it should still be validated with a short run before committing to long training.
+
+### 2c. YOLO26n + SwinContextBlock(P5)
+
+The repository also includes a lighter experimental path that keeps the stock `YOLO26n` backbone and inserts a Swin-style context block only on top of the backbone `P5` feature:
+
+- [custom_models/swin_context_block.py](./custom_models/swin_context_block.py) implements the local `SwinContextBlock`
+- [models/yolo26n_swin_context_p5.yaml](./models/yolo26n_swin_context_p5.yaml) defines `YOLO26n -> P5 -> SwinContextBlock -> Concat + Conv -> stock neck/head`
+- [scripts/train_swin_context.py](./scripts/train_swin_context.py) is the dedicated training entrypoint
+- [scripts/validate_swin_context.py](./scripts/validate_swin_context.py) performs a dummy-forward sanity check with shape and parameter reporting
+
+Run the architectural sanity check first:
+
+```bash
+python scripts/validate_swin_context.py --imgsz 640
+```
+
+Expected `P5` contract for `YOLO26n` at `640x640`:
+
+- `P5_backbone: (1, 256, 20, 20)`
+- `P5_context: (1, 256, 20, 20)`
+- `P5_fused: (1, 256, 20, 20)`
+
+Short smoke train:
+
+```bash
+python scripts/train_swin_context.py \
+  --data data/dataset.yaml \
+  --model models/yolo26n_swin_context_p5.yaml \
+  --weights yolo26n.pt \
+  --epochs 1 \
+  --imgsz 640 \
+  --batch 2 \
+  --device cpu \
+  --workers 0 \
+  --fraction 0.01 \
+  --project runs \
+  --name smoke_yolo26n_swin_context_p5
+```
+
+Longer comparison-style run, analogous to `train_swin.py`:
+
+```bash
+python3 scripts/train_swin_context.py \
+  --data data/dataset.yaml \
+  --model models/yolo26n_swin_context_p5.yaml \
+  --weights yolo26n.pt \
+  --project runs_cmp \
+  --name yolo26n_swin_context_p5_smoke \
+  --epochs 10 \
+  --imgsz 640 \
+  --batch 24 \
+  --device 0 \
+  --workers 4 \
+  --patience 10 \
+  --seed 42 \
+  --no-amp \
+  --optimizer SGD \
+  --fraction 0.1
+```
+
+Notes:
+
+- this path does not replace the YOLO backbone
+- the current YAML is intended specifically for `YOLO26n`
+- baseline warm start is done through `--weights yolo26n.pt`
 
 ### 3. Validate best model
 
@@ -252,6 +330,8 @@ The script runs `model.val(...)`, prints:
 
 Validation artifacts are saved into a dedicated folder inside `runs/`.
 
+For legacy pure Swin-T checkpoints, add `--backbone-variant swin_t`.
+
 ### 4. Run inference on samples
 
 ```bash
@@ -270,6 +350,8 @@ python scripts/predict_sample.py \
 - a directory with images
 
 Rendered predictions with bounding boxes are saved to the requested directory.
+
+For legacy pure Swin-T checkpoints, add `--backbone-variant swin_t`.
 
 ## Where results are stored
 
@@ -304,6 +386,14 @@ Typical training artifacts from Ultralytics include:
 ```bash
 python -c "import torch; print(torch.__version__); print(torch.version.cuda); print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0))"
 ```
+
+If the machine should use NVIDIA GPU directly from project requirements, install the dedicated CUDA requirements file instead of the generic one:
+
+```bash
+pip install -r requirements-gpu-cu124.txt
+```
+
+This file forces the official PyTorch CUDA 12.4 wheel index and then installs the project dependencies from PyPI as needed. It is intended for Linux/Windows GPU hosts with a compatible NVIDIA driver, not for CPU-only machines or macOS.
 
 ### Upload and configure
 
