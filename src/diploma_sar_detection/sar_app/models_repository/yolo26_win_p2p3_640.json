@@ -1,0 +1,15 @@
+{
+  "name": "Предлагаемый метод 640",
+  "path": "yolo26_swin_p2_p3_640.onnx",
+  "input_sizes": [
+    640
+  ],
+  "class_names": [
+    "swimmer",
+    "boat",
+    "jetski",
+    "life_saving_appliances",
+    "buoy"
+  ],
+  "description": ""
+}

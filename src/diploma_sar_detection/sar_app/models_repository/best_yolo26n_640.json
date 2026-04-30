@@ -1,0 +1,15 @@
+{
+  "name": "YOLO26n SAR 640",
+  "path": "best_yolo26n_640.onnx",
+  "input_sizes": [
+    640
+  ],
+  "class_names": [
+    "swimmer",
+    "boat",
+    "jetski",
+    "life_saving_appliances",
+    "buoy"
+  ],
+  "description": "Baseline YOLO26n SAR detector exported to ONNX."
+}
